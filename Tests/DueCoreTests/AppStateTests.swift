@@ -300,3 +300,85 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(reloaded.data.courseColors, state.data.courseColors)
     }
 }
+
+// MARK: - registered courses
+
+@MainActor
+final class AppStateCourseRegistryTests: XCTestCase {
+    func test_registerCourse_appearsInCoursesAndGetsColorBeforeAnyAssignmentUsesIt() {
+        // Arrange
+        let state = AppState()
+
+        // Act
+        let name = state.registerCourse("  CS 225  ")
+
+        // Assert
+        XCTAssertEqual(name, "CS 225")
+        XCTAssertEqual(state.courses, ["CS 225"])
+        XCTAssertTrue(PaletteColor.courseRotation.contains(state.color(forCourse: "CS 225")))
+        XCTAssertFalse(state.isCourseInUse("CS 225"))
+    }
+
+    func test_registerCourse_blankIsRejectedAndDuplicateKeepsExistingColor() {
+        // Arrange
+        let state = AppState()
+        state.registerCourse("BIO 101")
+        state.setColor(.pink, forCourse: "BIO 101")
+
+        // Act
+        let blank = state.registerCourse("   ")
+        let again = state.registerCourse("BIO 101")
+
+        // Assert
+        XCTAssertNil(blank)
+        XCTAssertEqual(again, "BIO 101")
+        XCTAssertEqual(state.color(forCourse: "BIO 101"), .pink)
+        XCTAssertEqual(state.courses, ["BIO 101"])
+    }
+
+    func test_courses_listsUsedCoursesFirstThenUnusedAlphabetically() {
+        // Arrange
+        let state = AppState()
+        state.registerCourse("ZOO 100")
+        state.registerCourse("ART 110")
+        state.add(title: "Essay", course: "ENGL 200", dueDate: Date().addingTimeInterval(3600))
+
+        // Act
+        let courses = state.courses
+
+        // Assert
+        XCTAssertEqual(courses, ["ENGL 200", "ART 110", "ZOO 100"])
+    }
+
+    func test_removeCourse_onlyRemovesUnusedCourses() {
+        // Arrange
+        let state = AppState()
+        state.registerCourse("UNUSED")
+        state.add(title: "Lab", course: "USED", dueDate: Date().addingTimeInterval(3600))
+
+        // Act
+        let removedUnused = state.removeCourse("UNUSED")
+        let removedUsed = state.removeCourse("USED")
+
+        // Assert
+        XCTAssertTrue(removedUnused)
+        XCTAssertFalse(removedUsed)
+        XCTAssertEqual(state.courses, ["USED"])
+        XCTAssertEqual(state.color(forCourse: "UNUSED"), .gray)
+    }
+
+    func test_registerCourse_persistsToDisk() throws {
+        // Arrange
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("due-courses-\(UUID().uuidString).json")
+        let store = JSONStore(url: url)
+        let state = AppState(store: store)
+
+        // Act
+        state.registerCourse("PHYS 211")
+
+        // Assert
+        let reloaded = AppState(data: try store.load(), store: store)
+        XCTAssertEqual(reloaded.courses, ["PHYS 211"])
+        try? FileManager.default.removeItem(at: url)
+    }
+}

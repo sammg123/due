@@ -15,6 +15,7 @@ struct QuickAddBar: View {
     @State private var explicitEstimate: Int?
     @State private var showNewCourseField = false
     @State private var newCourseText = ""
+    @FocusState private var newCourseFocused: Bool
 
     private static let estimateOptions = [15, 30, 45, 60, 90, 120, 180, 240]
 
@@ -50,12 +51,20 @@ struct QuickAddBar: View {
                     TextField("Course name", text: $newCourseText)
                         .textFieldStyle(.roundedBorder)
                         .font(.caption)
+                        .focused($newCourseFocused)
                         .onSubmit(commitNewCourse)
+                        .onExitCommand { cancelNewCourse() }
                     Button("Add", action: commitNewCourse)
                         .buttonStyle(.plain)
                         .font(.caption)
                         .foregroundStyle(.blue)
+                        .disabled(newCourseText.trimmingCharacters(in: .whitespaces).isEmpty)
+                    Button("Cancel", action: cancelNewCourse)
+                        .buttonStyle(.plain)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
+                .onAppear { newCourseFocused = true }
             }
 
             if let previewText {
@@ -97,11 +106,19 @@ struct QuickAddBar: View {
         .accessibilityLabel("Course")
     }
 
+    /// Registers the course immediately (it gets a color and appears in the dropdown and Settings)
+    /// and selects it for the next add.
     private func commitNewCourse() {
-        let clean = newCourseText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !clean.isEmpty { explicitCourse = clean }
+        if let registered = state.registerCourse(newCourseText) { explicitCourse = registered }
         newCourseText = ""
         showNewCourseField = false
+        isFocused.wrappedValue = true
+    }
+
+    private func cancelNewCourse() {
+        newCourseText = ""
+        showNewCourseField = false
+        isFocused.wrappedValue = true
     }
 
     // MARK: - Estimate

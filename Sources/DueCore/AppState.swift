@@ -45,15 +45,22 @@ public final class AppState {
         DueLogic.openEstimateMinutesThisWeek(data.assignments, now: now, settings: data.settings, calendar: calendar)
     }
 
-    /// Distinct course names, most recently used first.
+    /// Every known course: ones used by an assignment (most recently used first) followed by
+    /// registered-but-unused ones (alphabetical). A course is registered the moment it gets a color.
     public var courses: [String] {
         let ordered = data.assignments.sorted { $0.createdAt > $1.createdAt }
         var seen = Set<String>()
-        return ordered.compactMap { a in
+        let used = ordered.compactMap { a -> String? in
             guard let c = a.course, !c.isEmpty, !seen.contains(c) else { return nil }
             seen.insert(c)
             return c
         }
+        let unused = data.courseColors.keys.filter { !seen.contains($0) }.sorted()
+        return used + unused
+    }
+
+    public func isCourseInUse(_ course: String) -> Bool {
+        data.assignments.contains { $0.course == course }
     }
 
     public func color(forCourse course: String) -> PaletteColor {
@@ -158,6 +165,29 @@ public final class AppState {
             return a.withSortOrder(slot)
         }
         commit(next)
+    }
+
+    /// Adds a course to the dropdown (and gives it a color) before any assignment uses it.
+    /// Returns the cleaned name, or nil if it was blank.
+    @discardableResult
+    public func registerCourse(_ name: String) -> String? {
+        let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return nil }
+        guard data.courseColors[clean] == nil else { return clean }
+        var next = data
+        next.courseColors[clean] = Self.nextCourseColor(existing: next.courseColors)
+        commit(next)
+        return clean
+    }
+
+    /// Removes a course that no assignment uses. Returns false (and changes nothing) if it is in use.
+    @discardableResult
+    public func removeCourse(_ course: String) -> Bool {
+        guard !isCourseInUse(course) else { return false }
+        var next = data
+        next.courseColors.removeValue(forKey: course)
+        commit(next)
+        return true
     }
 
     public func setColor(_ color: PaletteColor, forCourse course: String) {

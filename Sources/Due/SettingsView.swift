@@ -101,7 +101,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 8) {
             SectionLabel("Course colors")
             if state.courses.isEmpty {
-                Text("Courses appear here once you add an assignment with one.")
+                Text("Add a course from the Course menu or with #Name in the add field.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
@@ -172,6 +172,17 @@ private struct CourseColorRow: View {
         HStack {
             Text(course)
             Spacer()
+            if !state.isCourseInUse(course) {
+                Button {
+                    state.removeCourse(course)
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Remove \(course) (no assignments use it)")
+                .accessibilityLabel("Remove \(course)")
+            }
             Menu {
                 ForEach(PaletteColor.allCases, id: \.self) { palette in
                     Button {

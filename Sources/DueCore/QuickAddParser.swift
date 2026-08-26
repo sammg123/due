@@ -23,7 +23,7 @@ public struct QuickAddParse: Equatable, Sendable {
 ///          eod, eow, "dec 8", "12/8"
 ///   times: 5pm, 5:30pm, 17:00, noon, midnight, "at 5", "@ 5"
 ///   course: #CS225
-///   estimate: ~45m, ~1h, ~1.5h, ~1h30m, ~2 hours
+///   estimate: ~45m, ~1h, ~1.5h, ~1h30m, ~2 hours (a leading - works too: -2h)
 /// Everything matched is stripped; the remainder is the title.
 public enum QuickAddParser {
     public static func parse(_ input: String, now: Date = Date(), calendar: Calendar = .current) -> QuickAddParse {
@@ -78,12 +78,12 @@ public enum QuickAddParser {
 
     private static func extractEstimate(from text: String) -> (Int, String)? {
         // ~1h30m / ~1h 30m
-        if let m = firstMatch(#"(?<=\s)~\s*(\d+)\s*h(?:rs?|ours?)?\s*(\d+)\s*m(?:in(?:s|utes)?)?(?=\s)"#, in: text) {
+        if let m = firstMatch(#"(?<=\s)[~-]\s*(\d+)\s*h(?:rs?|ours?)?\s*(\d+)\s*m(?:in(?:s|utes)?)?(?=\s)"#, in: text) {
             let h = Int(m.groups[0]) ?? 0, mm = Int(m.groups[1]) ?? 0
             return (h * 60 + mm, remove(m.range, from: text))
         }
         // ~45m / ~1.5h / ~2 hours
-        if let m = firstMatch(#"(?<=\s)~\s*(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours|m|min|mins|minute|minutes)(?=\s)"#, in: text) {
+        if let m = firstMatch(#"(?<=\s)[~-]\s*(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours|m|min|mins|minute|minutes)(?=\s)"#, in: text) {
             let n = Double(m.groups[0]) ?? 0
             let isHours = m.groups[1].hasPrefix("h")
             let minutes = Int((isHours ? n * 60 : n).rounded())

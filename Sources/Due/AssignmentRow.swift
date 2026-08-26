@@ -54,11 +54,19 @@ struct AssignmentRow: View {
 
             Spacer(minLength: 4)
 
-            Text(state.relativeDueText(for: assignment))
-                .font(.caption)
-                .monospacedDigit()
-                .foregroundStyle(Theme.textColor(bucket))
-                .help(DueLogic.fullDueText(for: assignment.dueDate))
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(DueLogic.dueDateLine(for: assignment.dueDate, now: state.now))
+                    .font(.caption.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.textColor(bucket))
+                Text(DueLogic.dueDetailLine(for: assignment.dueDate, now: state.now))
+                    .font(.caption2)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            .lineLimit(1)
+            .fixedSize()
+            .help(DueLogic.fullDueText(for: assignment.dueDate))
 
             if isHovering {
                 Button { showEdit = true } label: {

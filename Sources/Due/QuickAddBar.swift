@@ -221,7 +221,9 @@ struct QuickAddBar: View {
     }
 
     private var previewText: String? {
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return "Due \(DueLogic.fullDueText(for: pickerDate))"
+        }
         let parsed = parsedNow
         var parts = ["Due \(DueLogic.fullDueText(for: effectiveDue(parsed)))"]
         if let course = explicitCourse ?? parsed.course { parts.append(course) }

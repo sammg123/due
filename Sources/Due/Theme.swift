@@ -48,7 +48,7 @@ enum Theme {
     static let sectionHeaderHeight: CGFloat = 30
     static let statsLineHeight: CGFloat = 20
     static let emptyStateHeight: CGFloat = 88
-    static let listMaxHeight: CGFloat = 520
+    static let listMaxHeight: CGFloat = 440
     static let animationFast: Double = 0.15
     static let animationBase: Double = 0.3
 }

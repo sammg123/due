@@ -177,9 +177,9 @@ final class ScopeTests: XCTestCase {
         let nextWeek = DueLogic.weekInterval(containing: now, offsetWeeks: 1, calendar: cal)
         let lastWeek = DueLogic.weekInterval(containing: now, offsetWeeks: -1, calendar: cal)
 
-        XCTAssertEqual(DueLogic.weekTitle(thisWeek, now: now, calendar: cal), "This week")
-        XCTAssertEqual(DueLogic.weekTitle(nextWeek, now: now, calendar: cal), "Next week")
-        XCTAssertEqual(DueLogic.weekTitle(lastWeek, now: now, calendar: cal), "Last week")
+        XCTAssertTrue(DueLogic.weekTitle(thisWeek, now: now, calendar: cal).hasPrefix("This week · "))
+        XCTAssertTrue(DueLogic.weekTitle(nextWeek, now: now, calendar: cal).hasPrefix("Next week · "))
+        XCTAssertTrue(DueLogic.weekTitle(lastWeek, now: now, calendar: cal).hasPrefix("Last week · "))
     }
 
     func test_weekTitle_absoluteLabels_crossMonthAndSameMonth() {
@@ -198,5 +198,47 @@ final class ScopeTests: XCTestCase {
         XCTAssertEqual(DueLogic.dayTitle(date(2026, 8, 26, 15, 0), now: now, calendar: cal), "Today")
         XCTAssertEqual(DueLogic.dayTitle(date(2026, 8, 27, 9, 0), now: now, calendar: cal), "Tomorrow")
         XCTAssertEqual(DueLogic.dayTitle(date(2026, 8, 29), now: now, calendar: cal), "Sat, Aug 29")
+    }
+}
+
+final class DueDateLineTests: XCTestCase {
+    private var cal: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "America/Chicago")!
+        return c
+    }
+    private var saved: TimeZone!
+    override func setUp() { super.setUp(); saved = NSTimeZone.default; NSTimeZone.default = TimeZone(identifier: "America/Chicago")! }
+    override func tearDown() { NSTimeZone.default = saved; super.tearDown() }
+    private func d(_ y: Int, _ m: Int, _ day: Int, _ h: Int = 23, _ mi: Int = 59) -> Date {
+        cal.date(from: DateComponents(year: y, month: m, day: day, hour: h, minute: mi))!
+    }
+
+    func test_dueDateLine_alwaysHasWeekday_andYearOnlyWhenDifferent() {
+        let now = d(2026, 8, 26, 10, 0)
+        XCTAssertEqual(DueLogic.dueDateLine(for: d(2026, 8, 27), now: now, calendar: cal), "Thu, Aug 27")
+        XCTAssertEqual(DueLogic.dueDateLine(for: d(2027, 1, 5), now: now, calendar: cal), "Tue, Jan 5, 2027")
+    }
+
+    func test_dueDetailLine_relativeWordWithoutTime_timeWithRelativeWhenNear() {
+        let now = d(2026, 8, 26, 10, 0)
+        XCTAssertEqual(DueLogic.dueDetailLine(for: d(2026, 8, 27), now: now, calendar: cal), "tomorrow")
+        XCTAssertEqual(DueLogic.dueDetailLine(for: d(2026, 8, 27, 12, 30), now: now, calendar: cal), "12:30 PM · tomorrow")
+        XCTAssertEqual(DueLogic.dueDetailLine(for: d(2026, 8, 26, 17, 0), now: now, calendar: cal), "5:00 PM · today")
+        XCTAssertEqual(DueLogic.dueDetailLine(for: d(2026, 9, 4, 17, 0), now: now, calendar: cal), "5:00 PM · in 9d")
+        XCTAssertEqual(DueLogic.dueDetailLine(for: d(2026, 8, 28), now: now, calendar: cal), "in 2d")
+        XCTAssertEqual(DueLogic.dueDetailLine(for: d(2026, 8, 24), now: now, calendar: cal), "2d ago")
+    }
+
+    func test_weekTitle_thisWeekCarriesDateRange() {
+        let now = d(2026, 8, 26, 10, 0)
+        let week = DueLogic.weekInterval(containing: now, calendar: cal)
+        XCTAssertEqual(DueLogic.weekTitle(week, now: now, calendar: cal), "This week · Aug 23 to 29")
+    }
+
+    func test_estimate_acceptsDashPrefix() {
+        let p = QuickAddParser.parse("writ due -2h", now: d(2026, 8, 26, 10, 0), calendar: cal)
+        XCTAssertEqual(p.title, "writ")
+        XCTAssertEqual(p.estimateMinutes, 120)
     }
 }

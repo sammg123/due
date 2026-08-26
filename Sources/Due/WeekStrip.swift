@@ -79,10 +79,14 @@ private struct WeekStripColumn: View {
 
     var body: some View {
         Button(action: onSelect) {
-            VStack(spacing: 4) {
-                Text(day.weekdayLetter)
+            VStack(spacing: 3) {
+                Text(day.weekdayShort)
                     .font(.caption2)
-                    .fontWeight(day.isToday || isSelected ? .semibold : .regular)
+                    .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                Text(day.dayNumber)
+                    .font(.caption)
+                    .monospacedDigit()
+                    .fontWeight(day.isToday || isSelected ? .bold : .regular)
                     .foregroundStyle(isSelected ? Color.accentColor : (day.isToday ? .primary : .secondary))
 
                 loadDot
@@ -94,7 +98,7 @@ private struct WeekStripColumn: View {
                     .opacity(day.count > 0 ? 1 : 0)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 44)
+            .frame(height: 62)
             .background {
                 if isSelected {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)

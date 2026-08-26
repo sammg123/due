@@ -20,6 +20,20 @@ public struct WeekDay: Identifiable, Equatable, Sendable {
         f.dateFormat = "EEEEE"
         return f.string(from: date)
     }
+
+    /// "Wed".
+    public var weekdayShort: String {
+        let f = DateFormatter()
+        f.dateFormat = "EEE"
+        return f.string(from: date)
+    }
+
+    /// Day of month, "26".
+    public var dayNumber: String {
+        let f = DateFormatter()
+        f.dateFormat = "d"
+        return f.string(from: date)
+    }
 }
 
 public struct DoneStats: Equatable, Sendable {

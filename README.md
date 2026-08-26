@@ -5,6 +5,31 @@ windows), shows how many things are due today, and lets you add and manage
 assignments from a small popover. Nothing leaves your Mac; there is no network layer
 at all.
 
+![Due popover](docs/popover.png)
+
+## Install
+
+Requirements: macOS 14 or newer and the Swift toolchain (Xcode, or the Command Line
+Tools with Xcode 16+ / Swift 6). Smart parsing additionally needs macOS 26 with Apple
+Intelligence turned on; everything else works without it.
+
+```
+git clone https://github.com/sammg123/due.git
+cd due
+./build.sh
+```
+
+That builds a release binary, assembles `~/Applications/Due.app`, signs it locally, and
+launches it. A checklist icon appears in the menu bar. Because the app is built and signed
+on your own Mac, there is no Gatekeeper download warning. Rebuild any time with the same
+command; `./build.sh --test` runs the unit tests first and `./build.sh --no-launch` skips
+opening the app.
+
+To start it automatically, open the gear menu in the popover and turn on Launch at login.
+
+Your data is one JSON file at `~/Library/Application Support/Due/assignments.json`. Back it
+up by copying that file. Nothing is sent anywhere; the app has no network code.
+
 ## Quick add
 
 Type a line like this and press Enter:
@@ -14,8 +39,8 @@ pset 4 fri 5pm #CS225 ~1h30m
 ```
 
 That parses to: title "pset 4", due next Friday at 5:00 PM, course CS225, estimate 1
-hour 30 minutes. Anything you don't type is left out; a bare title with no date falls
-back to the day you're adding it.
+hour 30 minutes. Anything you don't type is left out; a bare title with no date uses the date
+picker next to the field (tomorrow, 11:59 PM by default).
 
 **Dates**
 
@@ -26,7 +51,7 @@ back to the day you're adding it.
 | `mon` … `sunday` | the next occurrence of that weekday |
 | `next fri` | that weekday, but in the following week |
 | `in 3 days`, `in 2 weeks` | relative offset |
-| `eow` | end of this week (Saturday) |
+| `eow` | end of this week (Friday) |
 | `dec 8`, `december 8th` | that date, next occurrence (rolls to next year if passed) |
 | `12/8` | month/day, same rollover rule |
 
@@ -112,3 +137,22 @@ run straight out of `.build/debug`.
 ## Smart parsing
 
 With Apple Intelligence enabled (macOS 26), the add field also runs an on-device language model about half a second after you stop typing. It cleans up the title, maps loose class mentions ("for writing") onto your real course names, and reads durations. A sparkles icon in the preview line means the model's read is in use. Dates the built-in parser recognizes always win, because the model is not reliable at weekday arithmetic ("next fri"). Turn it off in Settings under Parsing. Nothing leaves the Mac.
+
+## Development
+
+```
+swift test            # 171 unit tests on the DueCore logic
+swift build
+.build/debug/Due --preview            # popover in a normal window, for screenshots
+.build/debug/Due --preview-settings   # settings pane in a window
+```
+
+`DUE_DATA_PATH=/path/to/file.json` points the app at a different data file. `DUE_DEBUG=1`
+enables two dev signals: `kill -USR1 <pid>` clicks the menu bar item, `kill -USR2 <pid>`
+sends Escape, which lets a script drive the real popover without Accessibility access.
+
+![Settings](docs/settings.png)
+
+## License
+
+MIT

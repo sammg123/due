@@ -248,3 +248,81 @@ final class QuickAddParserTests: XCTestCase {
         XCTAssertEqual(next, 5)
     }
 }
+
+// MARK: - colon-less times and trailing punctuation
+
+final class QuickAddParserLooseTimeTests: XCTestCase {
+    private var cal: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "America/Chicago")!
+        return c
+    }
+    /// Wednesday 2026-08-26 10:00 Chicago.
+    private var now: Date { cal.date(from: DateComponents(year: 2026, month: 8, day: 26, hour: 10))! }
+
+    private func hm(_ date: Date?) -> (Int, Int)? {
+        guard let date else { return nil }
+        let c = cal.dateComponents([.hour, .minute], from: date)
+        return (c.hour!, c.minute!)
+    }
+
+    func test_atFourDigits_isReadAsClockTime() {
+        // Arrange / Act
+        let p = QuickAddParser.parse("pre class assignment due at 1230", now: now, calendar: cal)
+
+        // Assert
+        XCTAssertEqual(p.title, "pre class assignment")
+        XCTAssertEqual(hm(p.dueDate)?.0, 12)
+        XCTAssertEqual(hm(p.dueDate)?.1, 30)
+        XCTAssertTrue(p.hasExplicitTime)
+    }
+
+    func test_atThreeDigits_guessesAfternoonForSmallHours() {
+        // Arrange / Act
+        let p = QuickAddParser.parse("quiz at 330", now: now, calendar: cal)
+
+        // Assert
+        XCTAssertEqual(p.title, "quiz")
+        XCTAssertEqual(hm(p.dueDate)?.0, 15)
+        XCTAssertEqual(hm(p.dueDate)?.1, 30)
+    }
+
+    func test_fourDigitsWithAmPm_worksWithoutAt() {
+        // Arrange / Act
+        let p = QuickAddParser.parse("reading 830am tomorrow", now: now, calendar: cal)
+
+        // Assert
+        XCTAssertEqual(p.title, "reading")
+        XCTAssertEqual(hm(p.dueDate)?.0, 8)
+        XCTAssertEqual(hm(p.dueDate)?.1, 30)
+        XCTAssertEqual(cal.component(.day, from: p.dueDate!), 27)
+    }
+
+    func test_bareFourDigitNumberWithoutAt_isLeftInTitle() {
+        // Arrange / Act
+        let p = QuickAddParser.parse("read pages 1230", now: now, calendar: cal)
+
+        // Assert
+        XCTAssertEqual(p.title, "read pages 1230")
+        XCTAssertNil(p.dueDate)
+    }
+
+    func test_trailingPunctuation_doesNotBlockTokens() {
+        // Arrange / Act
+        let p = QuickAddParser.parse("essay fri, 5pm.", now: now, calendar: cal)
+
+        // Assert
+        XCTAssertEqual(p.title, "essay")
+        XCTAssertEqual(cal.component(.weekday, from: p.dueDate!), 6)
+        XCTAssertEqual(hm(p.dueDate)?.0, 17)
+    }
+
+    func test_estimateDecimal_stillWorksAfterNormalization() {
+        // Arrange / Act
+        let p = QuickAddParser.parse("lab ~1.5h", now: now, calendar: cal)
+
+        // Assert
+        XCTAssertEqual(p.title, "lab")
+        XCTAssertEqual(p.estimateMinutes, 90)
+    }
+}

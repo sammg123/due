@@ -27,7 +27,9 @@ public struct QuickAddParse: Equatable, Sendable {
 /// Everything matched is stripped; the remainder is the title.
 public enum QuickAddParser {
     public static func parse(_ input: String, now: Date = Date(), calendar: Calendar = .current) -> QuickAddParse {
-        var text = " \(input) "
+        // Trailing punctuation ("5pm.", "fri,") should not stop a token from matching.
+        let normalized = input.replacingOccurrences(of: #"([.,;!])(?=\s|$)"#, with: " ", options: .regularExpression)
+        var text = " \(normalized) "
         var result = QuickAddParse(title: "")
 
         if let (course, stripped) = extractCourse(from: text) {
@@ -175,6 +177,12 @@ public enum QuickAddParser {
         if let m = firstMatch(#"(?i)(?<=\s)midnight(?=\s)"#, in: text) {
             return (DateComponents(hour: 23, minute: 59), remove(m.range, from: text))
         }
+        // 1230pm, 830am (no colon, with am/pm)
+        if let m = firstMatch(#"(?i)(?<=\s)(?:(?:at|@)\s+)?(\d{1,2})(\d{2})\s*(am|pm|a|p)(?=\s)"#, in: text),
+           let h = Int(m.groups[0]), let mm = Int(m.groups[1]), (1...12).contains(h), (0...59).contains(mm) {
+            let isPM = m.groups[2].lowercased().hasPrefix("p")
+            return (DateComponents(hour: (h % 12) + (isPM ? 12 : 0), minute: mm), remove(m.range, from: text))
+        }
         // 5pm, 5:30pm, 5 pm, 5p
         if let m = firstMatch(#"(?i)(?<=\s)(?:(?:at|@)\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)(?=\s)"#, in: text),
            let h = Int(m.groups[0]), (1...12).contains(h) {
@@ -182,6 +190,11 @@ public enum QuickAddParser {
             let isPM = m.groups[2].lowercased().hasPrefix("p")
             let hour = (h % 12) + (isPM ? 12 : 0)
             return (DateComponents(hour: hour, minute: minute), remove(m.range, from: text))
+        }
+        // "at 1230" / "@ 830": colon-less clock time, only when preceded by at/@. Same AM/PM guess as "at 5".
+        if let m = firstMatch(#"(?i)(?<=\s)(?:at|@)\s+(\d{1,2})(\d{2})(?=\s)"#, in: text),
+           let h = Int(m.groups[0]), let mm = Int(m.groups[1]), (0...23).contains(h), (0...59).contains(mm) {
+            return (DateComponents(hour: guessHour(h), minute: mm), remove(m.range, from: text))
         }
         // 17:00 / at 17:00
         if let m = firstMatch(#"(?<=\s)(?:(?:at|@)\s+)?(\d{1,2}):(\d{2})(?=\s)"#, in: text),
@@ -191,10 +204,14 @@ public enum QuickAddParser {
         // "at 5" / "@ 5": bare number only when preceded by at/@. 1-6 reads as PM, 7-11 as AM.
         if let m = firstMatch(#"(?i)(?<=\s)(?:at|@)\s+(\d{1,2})(?=\s)"#, in: text),
            let h = Int(m.groups[0]), (1...23).contains(h) {
-            let hour = h <= 6 ? h + 12 : h
-            return (DateComponents(hour: hour, minute: 0), remove(m.range, from: text))
+            return (DateComponents(hour: guessHour(h), minute: 0), remove(m.range, from: text))
         }
         return nil
+    }
+
+    /// No am/pm given: 1 to 6 means afternoon, everything else is taken literally (7 to 11 morning, 12 noon, 13+ 24h).
+    static func guessHour(_ h: Int) -> Int {
+        (1...6).contains(h) ? h + 12 : h
     }
 
     private static func resolveDate(

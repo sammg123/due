@@ -52,7 +52,7 @@ struct PopoverView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text("Due").font(.headline)
+            Text("Due").font(.title3.weight(.semibold))
             Spacer()
             Text(summaryText)
                 .font(.caption)
@@ -132,12 +132,19 @@ struct PopoverView: View {
     /// Estimated content height so the menu bar window can size itself; the list scrolls past `listMaxHeight`.
     private var listHeight: CGFloat {
         let open = openGroups.reduce(CGFloat(0)) { total, group in
-            total + Theme.sectionHeaderHeight + CGFloat(group.items.count) * Theme.rowHeight
+            total + Theme.sectionHeaderHeight + rowsHeight(group.items)
         }
-        let doneRows = doneExpanded ? Theme.statsLineHeight + CGFloat(doneItems.count) * Theme.rowHeight : 0
+        let doneRows = doneExpanded ? Theme.statsLineHeight + rowsHeight(doneItems) : 0
         let done = doneItems.isEmpty ? 0 : Theme.sectionHeaderHeight + doneRows
         let empty = hasOpenItems ? 0 : Theme.emptyStateHeight
         return min(Theme.listMaxHeight, open + done + empty + 8)
+    }
+
+    private func rowsHeight(_ items: [Assignment]) -> CGFloat {
+        items.reduce(CGFloat(0)) { total, item in
+            let wraps = item.title.count > Theme.titleCharsPerLine
+            return total + Theme.rowHeight + (wraps ? Theme.extraTitleLineHeight : 0)
+        }
     }
 
     private var emptyState: some View {

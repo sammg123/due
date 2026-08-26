@@ -22,8 +22,9 @@ struct AssignmentRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(assignment.title)
-                    .font(.body)
-                    .lineLimit(1)
+                    .font(.system(size: 14))
+                    .lineLimit(2)
+                    .help(assignment.title)
                     .strikethrough(assignment.isDone)
 
                 if assignment.course != nil || assignment.estimateMinutes != nil {

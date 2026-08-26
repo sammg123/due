@@ -34,7 +34,7 @@ back to the day you're adding it.
 
 | You type | Means |
 |---|---|
-| `5pm`, `5:30pm`, `17:00` | that clock time |
+| `5pm`, `5:30pm`, `17:00, at 1230, 830am` | that clock time |
 | `at 5`, `@ 5` | 5 reads as PM if 1 to 6, AM if 7 to 11 |
 | `noon` | 12:00 PM |
 | `midnight` | 11:59 PM (end of that day) |

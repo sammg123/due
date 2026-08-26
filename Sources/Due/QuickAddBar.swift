@@ -29,6 +29,7 @@ struct QuickAddBar: View {
         VStack(alignment: .leading, spacing: 6) {
             TextField("Add assignment (e.g. pset 4 fri 5pm #CS225 ~2h)", text: $text)
                 .textFieldStyle(.plain)
+                .font(.system(size: 14))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
                 .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
@@ -99,7 +100,7 @@ struct QuickAddBar: View {
             Button("None") { explicitCourse = nil }
             Button("New course…") { showNewCourseField = true }
         } label: {
-            Text(explicitCourse ?? "Course").font(.caption)
+            Text(explicitCourse ?? "Course").font(.callout)
         }
         .menuStyle(.borderlessButton)
         .help("Course")
@@ -130,7 +131,7 @@ struct QuickAddBar: View {
                 Button(DueLogic.estimateText(minutes: minutes)) { explicitEstimate = minutes }
             }
         } label: {
-            Text(explicitEstimate.map { DueLogic.estimateText(minutes: $0) } ?? "Est.").font(.caption)
+            Text(explicitEstimate.map { DueLogic.estimateText(minutes: $0) } ?? "Est.").font(.callout)
         }
         .menuStyle(.borderlessButton)
         .help("Estimated time")

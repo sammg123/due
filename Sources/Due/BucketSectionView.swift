@@ -21,6 +21,8 @@ struct BucketSectionView: View {
                 .listSectionSeparator(.hidden)
         }
         .listSectionSeparator(.hidden)
+        .listSectionSeparatorTint(.clear)
+        .listRowSeparatorTint(.clear)
     }
 
     private var header: some View {

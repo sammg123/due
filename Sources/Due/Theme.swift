@@ -34,17 +34,21 @@ enum Theme {
     }
 
     // Layout constants (8pt grid).
-    static let popoverWidth: CGFloat = 340
-    static let popoverMaxHeight: CGFloat = 560
+    static let popoverWidth: CGFloat = 440
+    static let popoverMaxHeight: CGFloat = 760
     static let urgencyBarWidth: CGFloat = 3
     static let rowCornerRadius: CGFloat = 8
     /// The MenuBarExtra window sizes to content and `List` has no intrinsic height, so the
     /// popover computes the list height from these measured row/header sizes.
-    static let rowHeight: CGFloat = 47
+    static let rowHeight: CGFloat = 50
+    /// Added per extra wrapped title line (titles wrap to at most 2 lines).
+    static let extraTitleLineHeight: CGFloat = 18
+    /// Rough characters per title line at `popoverWidth`, used only for the height estimate.
+    static let titleCharsPerLine = 42
     static let sectionHeaderHeight: CGFloat = 30
     static let statsLineHeight: CGFloat = 20
     static let emptyStateHeight: CGFloat = 88
-    static let listMaxHeight: CGFloat = 360
+    static let listMaxHeight: CGFloat = 520
     static let animationFast: Double = 0.15
     static let animationBase: Double = 0.3
 }

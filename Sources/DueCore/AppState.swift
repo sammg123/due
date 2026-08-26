@@ -40,6 +40,36 @@ public final class AppState {
     public var todayCount: Int { DueLogic.todayCount(data.assignments, now: now, calendar: calendar) }
     public var openCount: Int { data.assignments.filter { !$0.isDone }.count }
     public var weekLoad: [WeekDay] { DueLogic.weekLoad(data.assignments, now: now, calendar: calendar) }
+
+    // MARK: Week navigation and filtering
+
+    public func weekInterval(offset: Int) -> DateInterval {
+        DueLogic.weekInterval(containing: now, offsetWeeks: offset, calendar: calendar)
+    }
+
+    /// Load strip for the calendar week `offset` weeks from now, optionally narrowed to one course.
+    public func weekLoad(offset: Int, course: String? = nil) -> [WeekDay] {
+        let items = DueLogic.filter(data.assignments, course: course, scope: .all, calendar: calendar)
+        return DueLogic.weekLoad(items, week: weekInterval(offset: offset), now: now, calendar: calendar)
+    }
+
+    public func weekTitle(offset: Int) -> String {
+        DueLogic.weekTitle(weekInterval(offset: offset), now: now, calendar: calendar)
+    }
+
+    public func dayTitle(_ day: Date) -> String {
+        DueLogic.dayTitle(day, now: now, calendar: calendar)
+    }
+
+    /// Bucketed list narrowed by course and scope.
+    public func grouped(course: String?, scope: ListScope) -> [BucketGroup] {
+        let items = DueLogic.filter(data.assignments, course: course, scope: scope, calendar: calendar)
+        return DueLogic.grouped(items, now: now, settings: data.settings, calendar: calendar)
+    }
+
+    public func openCount(course: String?, scope: ListScope) -> Int {
+        DueLogic.filter(data.assignments, course: course, scope: scope, calendar: calendar).filter { !$0.isDone }.count
+    }
     public var doneStats: DoneStats { DueLogic.doneStats(data.assignments, now: now, calendar: calendar) }
     public var openEstimateMinutesThisWeek: Int {
         DueLogic.openEstimateMinutesThisWeek(data.assignments, now: now, settings: data.settings, calendar: calendar)
@@ -153,6 +183,16 @@ public final class AppState {
     public func sortByDueDate(in bucket: DueBucket) {
         guard let group = grouped.first(where: { $0.bucket == bucket }) else { return }
         applyOrder(group.items.sorted { $0.dueDate < $1.dueDate })
+    }
+
+    /// Groups a bucket by course (alphabetical, no-course last), due date within a course.
+    public func sortByCourse(in bucket: DueBucket) {
+        guard let group = grouped.first(where: { $0.bucket == bucket }) else { return }
+        applyOrder(group.items.sorted {
+            let a = $0.course ?? "\u{FFFF}", b = $1.course ?? "\u{FFFF}"
+            if a != b { return a.localizedCaseInsensitiveCompare(b) == .orderedAscending }
+            return $0.dueDate < $1.dueDate
+        })
     }
 
     private func applyOrder(_ ordered: [Assignment]) {

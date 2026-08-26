@@ -13,6 +13,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 16) {
             launchAtLoginSection
             urgencySection
+            parsingSection
             courseColorsSection
             dataSection
             doneRow
@@ -95,6 +96,32 @@ struct SettingsView: View {
         )
     }
 
+    // MARK: - Parsing
+
+    private var parsingSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionLabel("Parsing")
+            Toggle("Smart parsing (on-device Apple Intelligence)", isOn: smartParsingBinding)
+                .disabled(!SmartQuickAddParser.isAvailable)
+            Text(SmartQuickAddParser.isAvailable
+                ? "Runs on this Mac. Nothing leaves the device."
+                : (SmartQuickAddParser.unavailableReason ?? "Not available on this Mac."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var smartParsingBinding: Binding<Bool> {
+        Binding(
+            get: { state.settings.smartParsing },
+            set: { newValue in
+                var next = state.settings
+                next.smartParsing = newValue
+                state.updateSettings(next)
+            }
+        )
+    }
+
     // MARK: - Course colors
 
     private var courseColorsSection: some View {
@@ -162,15 +189,27 @@ private struct SectionLabel: View {
     }
 }
 
-/// One course's name plus a color picker menu. The menu's closed-state label is an
-/// icon-only swatch, so it carries `.help()` and `.accessibilityLabel()`.
+/// One course's name, its current color (a real swatch plus the color name), and a color
+/// picker menu. AppKit drops SwiftUI shapes from `Menu` labels and turns SF Symbols into
+/// monochrome template images inside `NSMenu`, so both the closed-menu label and every menu
+/// item use `Theme.swatch`, a non-template filled-circle bitmap, instead.
 private struct CourseColorRow: View {
     let course: String
     let state: AppState
 
+    private var current: PaletteColor { state.color(forCourse: course) }
+
     var body: some View {
         HStack {
-            Text(course)
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(Theme.color(current))
+                    .frame(width: 12, height: 12)
+                Text(course)
+                Text(current.rawValue.capitalized)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Spacer()
             if !state.isCourseInUse(course) {
                 Button {
@@ -189,22 +228,27 @@ private struct CourseColorRow: View {
                         state.setColor(palette, forCourse: course)
                     } label: {
                         Label {
-                            Text(palette.rawValue.capitalized)
+                            Text(menuTitle(for: palette))
                         } icon: {
-                            Image(systemName: "circle.fill")
-                                .foregroundStyle(Theme.color(palette))
+                            Image(nsImage: Theme.swatch(palette))
                         }
                     }
                 }
             } label: {
-                Circle()
-                    .fill(Theme.color(state.color(forCourse: course)))
-                    .frame(width: 12, height: 12)
+                Image(nsImage: Theme.swatch(current))
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
             .help("Change color for \(course)")
-            .accessibilityLabel("Color for \(course)")
+            .accessibilityLabel("Color for \(course), currently \(current.rawValue.capitalized)")
         }
+    }
+
+    /// The selected color's own menu item is marked with a trailing checkmark; a plain text
+    /// glyph, since an SF Symbol here would render as the same monochrome template image the
+    /// swatches were built to avoid.
+    private func menuTitle(for palette: PaletteColor) -> String {
+        let name = palette.rawValue.capitalized
+        return palette == current ? "\(name) \u{2713}" : name
     }
 }

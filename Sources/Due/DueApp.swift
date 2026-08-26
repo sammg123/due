@@ -23,6 +23,13 @@ struct DueApp: App {
                 .environment(state)
         }
         .windowResizability(.contentSize)
+
+        // `Due --preview-settings`: the settings popover content in a window, for screenshots.
+        Window("Due Settings Preview", id: "settings-preview") {
+            SettingsView()
+                .environment(state)
+        }
+        .windowResizability(.contentSize)
     }
 }
 
@@ -45,6 +52,10 @@ struct MenuBarLabel: View {
         .onAppear {
             if CommandLine.arguments.contains("--preview") {
                 openWindow(id: "preview")
+                NSApp.activate(ignoringOtherApps: true)
+            }
+            if CommandLine.arguments.contains("--preview-settings") {
+                openWindow(id: "settings-preview")
                 NSApp.activate(ignoringOtherApps: true)
             }
         }

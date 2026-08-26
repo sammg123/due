@@ -102,3 +102,13 @@ Requires macOS 14 or later.
 Settings > General > "Launch at login". This only works once Due is running from
 `~/Applications/Due.app` (built via `./build.sh`); it can't register a login item when
 run straight out of `.build/debug`.
+
+## Views and filters
+
+- Week strip: click a day to see only what is due that day, click the week title for the whole week, and use the arrows to page to next weeks (or up to 4 weeks back). "All" in the scope bar returns to the full list.
+- Course chips under the add field filter everything (list and week strip) to one course.
+- Right-click a group header for "Sort by due date" or "Sort by course". Drag rows to set your own order.
+
+## Smart parsing
+
+With Apple Intelligence enabled (macOS 26), the add field also runs an on-device language model about half a second after you stop typing. It cleans up the title, maps loose class mentions ("for writing") onto your real course names, and reads durations. A sparkles icon in the preview line means the model's read is in use. Dates the built-in parser recognizes always win, because the model is not reliable at weekday arithmetic ("next fri"). Turn it off in Settings under Parsing. Nothing leaves the Mac.

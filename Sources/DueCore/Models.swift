@@ -82,14 +82,17 @@ public struct DueSettings: Codable, Equatable, Sendable {
     /// Due within this many days = "This week" (blue). Beyond = "Later" (gray).
     public var weekDays: Int
     public var launchAtLogin: Bool
+    /// Use the on-device language model (Apple Intelligence) to parse quick-add text when available.
+    public var smartParsing: Bool
 
     public static let defaultSoonDays = 3
     public static let defaultWeekDays = 7
 
-    public init(soonDays: Int = DueSettings.defaultSoonDays, weekDays: Int = DueSettings.defaultWeekDays, launchAtLogin: Bool = false) {
+    public init(soonDays: Int = DueSettings.defaultSoonDays, weekDays: Int = DueSettings.defaultWeekDays, launchAtLogin: Bool = false, smartParsing: Bool = true) {
         self.soonDays = soonDays
         self.weekDays = weekDays
         self.launchAtLogin = launchAtLogin
+        self.smartParsing = smartParsing
     }
 
     public init(from decoder: Decoder) throws {
@@ -97,6 +100,7 @@ public struct DueSettings: Codable, Equatable, Sendable {
         soonDays = try c.decodeIfPresent(Int.self, forKey: .soonDays) ?? DueSettings.defaultSoonDays
         weekDays = try c.decodeIfPresent(Int.self, forKey: .weekDays) ?? DueSettings.defaultWeekDays
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
+        smartParsing = try c.decodeIfPresent(Bool.self, forKey: .smartParsing) ?? true
     }
 }
 

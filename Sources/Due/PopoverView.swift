@@ -12,9 +12,32 @@ struct PopoverView: View {
     @State private var showSettings = false
     @AppStorage("doneExpanded") private var doneExpanded = false
 
-    private var openGroups: [BucketGroup] { state.grouped.filter { $0.bucket != .done } }
-    private var doneItems: [Assignment] { state.grouped.first { $0.bucket == .done }?.items ?? [] }
-    private var hasOpenItems: Bool { state.assignments.contains { !$0.isDone } }
+    @State private var weekOffset = 0
+    @State private var scope: ListScope = .all
+    @State private var courseFilter: String? = nil
+
+    /// How many weeks back paging is allowed to go.
+    private static let maxWeeksBack = 4
+
+    private var filteredGroups: [BucketGroup] { state.grouped(course: courseFilter, scope: scope) }
+    private var openGroups: [BucketGroup] { filteredGroups.filter { $0.bucket != .done } }
+    private var doneItems: [Assignment] { filteredGroups.first { $0.bucket == .done }?.items ?? [] }
+    private var hasOpenItems: Bool { state.openCount(course: courseFilter, scope: scope) > 0 }
+    /// The list (with its scope bar) stays visible while scoped even if that scope is empty,
+    /// so the scoped empty message can show instead of the generic "nothing at all" state.
+    private var showList: Bool { !scope.isAll || hasOpenItems || !doneItems.isEmpty }
+
+    private var selectedDay: Date? {
+        if case .day(let day) = scope { return day }
+        return nil
+    }
+
+    private var isWeekScope: Bool {
+        if case .week = scope { return true }
+        return false
+    }
+
+    private var canGoBackAWeek: Bool { weekOffset > -Self.maxWeeksBack }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,7 +47,17 @@ struct PopoverView: View {
                 errorBanner(error)
             }
 
-            WeekStrip(days: state.weekLoad)
+            WeekStrip(
+                days: state.weekLoad(offset: weekOffset, course: courseFilter),
+                title: state.weekTitle(offset: weekOffset),
+                selectedDay: selectedDay,
+                isWeekScope: isWeekScope,
+                canGoBack: canGoBackAWeek,
+                onSelectDay: selectDay,
+                onPrevious: goToPreviousWeek,
+                onNext: goToNextWeek,
+                onSelectWeek: toggleWeekScope
+            )
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
 
@@ -32,7 +65,17 @@ struct PopoverView: View {
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
 
-            if hasOpenItems || !doneItems.isEmpty {
+            if state.courses.count >= 1 {
+                CourseFilterBar(selected: $courseFilter)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+            }
+
+            if !scope.isAll {
+                scopeBar
+            }
+
+            if showList {
                 list
                     .frame(height: listHeight)
                     .animation(reduceMotion ? nil : .easeOut(duration: Theme.animationBase), value: listHeight)
@@ -44,8 +87,71 @@ struct PopoverView: View {
         }
         .frame(width: Theme.popoverWidth)
         .frame(maxHeight: Theme.popoverMaxHeight)
-        .onAppear { state.refreshNow() }
+        .onAppear {
+            state.refreshNow()
+            scope = .all
+            weekOffset = 0
+        }
         .overlay(escapeButton)
+    }
+
+    // MARK: - Week and scope navigation
+
+    private func selectDay(_ day: Date) {
+        if case .day(let current) = scope, Calendar.current.isDate(current, inSameDayAs: day) {
+            scope = .all
+        } else {
+            scope = .day(day)
+        }
+    }
+
+    private func toggleWeekScope() {
+        if isWeekScope {
+            scope = .all
+        } else {
+            scope = .week(state.weekInterval(offset: weekOffset))
+        }
+    }
+
+    private func goToPreviousWeek() {
+        weekOffset -= 1
+        scope = weekOffset == 0 ? .all : .week(state.weekInterval(offset: weekOffset))
+    }
+
+    private func goToNextWeek() {
+        weekOffset += 1
+        scope = weekOffset == 0 ? .all : .week(state.weekInterval(offset: weekOffset))
+    }
+
+    // MARK: - Scope bar
+
+    private var scopeBar: some View {
+        HStack(spacing: 4) {
+            Text(scopeTitle)
+                .fontWeight(.semibold)
+            Text("· \(state.openCount(course: courseFilter, scope: scope)) open")
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button("All") {
+                scope = .all
+                weekOffset = 0
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.accentColor)
+            .help("Show all assignments")
+            .accessibilityLabel("Show all assignments")
+        }
+        .font(.caption)
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+    }
+
+    private var scopeTitle: String {
+        switch scope {
+        case .all: return ""
+        case .day(let day): return state.dayTitle(day)
+        case .week: return state.weekTitle(offset: weekOffset)
+        }
     }
 
     // MARK: - Header
@@ -111,7 +217,7 @@ struct PopoverView: View {
     private var list: some View {
         List {
             if !hasOpenItems {
-                emptyState
+                emptyStateView(innerEmptyText)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets())
             }
@@ -126,7 +232,7 @@ struct PopoverView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .animation(reduceMotion ? nil : .easeOut(duration: Theme.animationBase), value: state.grouped)
+        .animation(reduceMotion ? nil : .easeOut(duration: Theme.animationBase), value: filteredGroups)
     }
 
     /// Estimated content height so the menu bar window can size itself; the list scrolls past `listMaxHeight`.
@@ -148,7 +254,21 @@ struct PopoverView: View {
     }
 
     private var emptyState: some View {
-        Text("Nothing due. Add something above.")
+        emptyStateView("Nothing due. Add something above.")
+    }
+
+    /// The inner empty message shown inside the list frame when the current scope has no open
+    /// items. Scoped views get a scope-specific message instead of the generic one.
+    private var innerEmptyText: String {
+        switch scope {
+        case .all: return "Nothing due. Add something above."
+        case .day(let day): return "Nothing due \(state.dayTitle(day))."
+        case .week: return "Nothing due this week."
+        }
+    }
+
+    private func emptyStateView(_ text: String) -> some View {
+        Text(text)
             .font(.body)
             .foregroundStyle(.secondary)
             .multilineTextAlignment(.center)

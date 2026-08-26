@@ -17,6 +17,15 @@ struct QuickAddBar: View {
     @State private var newCourseText = ""
     @FocusState private var newCourseFocused: Bool
 
+    @State private var smart = SmartQuickAddParser()
+    @State private var smartResult: (text: String, result: SmartParseResult)?
+    @State private var smartTask: Task<Void, Never>?
+    @State private var isSmartParsing = false
+
+    private static let smartParseDebounce: UInt64 = 400_000_000
+    private static let smartParseMinChars = 3
+    private static let performAddWait: Double = 1.2
+
     private static let estimateOptions = [15, 30, 45, 60, 90, 120, 180, 240]
 
     init(isFocused: FocusState<Bool>.Binding) {
@@ -35,6 +44,7 @@ struct QuickAddBar: View {
                 .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
                 .focused(isFocused)
                 .onSubmit(performAdd)
+                .onChange(of: text) { _, newValue in scheduleSmartParse(for: newValue) }
 
             HStack(spacing: 8) {
                 courseMenu
@@ -69,11 +79,23 @@ struct QuickAddBar: View {
             }
 
             if let previewText {
-                Text(previewText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .transition(.opacity)
+                HStack(spacing: 4) {
+                    if isUsingSmartResult {
+                        Image(systemName: "sparkles")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
+                    }
+                    Text(previewText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    if isSmartParsing {
+                        ProgressView()
+                            .controlSize(.mini)
+                    }
+                }
+                .transition(.opacity)
             }
         }
         .task {
@@ -87,6 +109,7 @@ struct QuickAddBar: View {
                 .accessibilityHidden(true)
         )
         .animation(reduceMotion ? nil : .easeOut(duration: Theme.animationFast), value: previewText)
+        .animation(reduceMotion ? nil : .easeOut(duration: Theme.animationFast), value: isSmartParsing)
     }
 
     // MARK: - Course
@@ -138,9 +161,64 @@ struct QuickAddBar: View {
         .accessibilityLabel("Estimated time")
     }
 
+    // MARK: - Smart parse
+
+    /// True while a debounced smart-parse call is in flight for the current text.
+    private var isUsingSmartResult: Bool {
+        guard let smartResult else { return false }
+        return smartResult.text == text
+    }
+
+    /// Debounces 400ms after the last keystroke, then asks the on-device model for a parse.
+    /// Cancels any in-flight parse for stale text first. Errors fall back to the regex parse
+    /// silently; only the outer bar's preview line reflects readiness via `isSmartParsing`.
+    private func scheduleSmartParse(for newText: String) {
+        smartTask?.cancel()
+        smartTask = nil
+        let trimmed = newText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard state.settings.smartParsing, SmartQuickAddParser.isAvailable, trimmed.count >= Self.smartParseMinChars else {
+            isSmartParsing = false
+            return
+        }
+        let now = state.now
+        let courses = state.courses
+        isSmartParsing = true
+        smartTask = Task {
+            try? await Task.sleep(nanoseconds: Self.smartParseDebounce)
+            guard !Task.isCancelled else { return }
+            do {
+                let result = try await smart.parse(newText, now: now, knownCourses: courses)
+                if !Task.isCancelled, text == newText { smartResult = (newText, result) }
+            } catch {
+                NSLog("Due: smart quick-add parse failed, using regex parse: \(error.localizedDescription)")
+            }
+            if text == newText { isSmartParsing = false }
+        }
+    }
+
+    /// Waits for an in-flight smart parse (up to `performAddWait`) so pressing Enter fast still
+    /// gets the better parse when it lands in time; otherwise proceeds with what's available.
+    private func awaitSmartParse() async {
+        guard let smartTask, isSmartParsing else { return }
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await smartTask.value }
+            group.addTask { try? await Task.sleep(nanoseconds: UInt64(Self.performAddWait * 1_000_000_000)) }
+            await group.next()
+            group.cancelAll()
+        }
+    }
+
     // MARK: - Preview & add
 
-    private var parsedNow: QuickAddParse { QuickAddParser.parse(text, now: state.now) }
+    /// Model fields win where present for text still matching the parse; the regex parse fills
+    /// every gap, exactly as `QuickAddParse.merging` documents.
+    private var parsedNow: QuickAddParse {
+        let base = QuickAddParser.parse(text, now: state.now)
+        if let smartResult, smartResult.text == text {
+            return base.merging(smartResult.result, now: state.now)
+        }
+        return base
+    }
 
     private var previewText: String? {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
@@ -158,10 +236,16 @@ struct QuickAddBar: View {
     }
 
     /// Parse once and submit exactly what the preview line showed: explicit controls win,
-    /// otherwise the parsed value, otherwise the picker date.
+    /// otherwise the parsed value, otherwise the picker date. Wrapped in a `Task` so it stays
+    /// callable synchronously from `.onSubmit` while it awaits an in-flight smart parse.
     private func performAdd() {
+        Task { await performAddAsync() }
+    }
+
+    private func performAddAsync() async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        await awaitSmartParse()
         let parsed = parsedNow
         let added = state.add(
             title: parsed.title,
@@ -173,6 +257,10 @@ struct QuickAddBar: View {
         text = ""
         explicitEstimate = nil
         didTouchDate = false
+        smartTask?.cancel()
+        smartTask = nil
+        smartResult = nil
+        isSmartParsing = false
         isFocused.wrappedValue = true
     }
 }

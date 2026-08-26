@@ -38,6 +38,7 @@ struct BucketSectionView: View {
         }
         .contextMenu {
             Button("Sort by due date") { state.sortByDueDate(in: group.bucket) }
+            Button("Sort by course") { state.sortByCourse(in: group.bucket) }
         }
     }
 }

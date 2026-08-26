@@ -52,3 +52,22 @@ enum Theme {
     static let animationFast: Double = 0.15
     static let animationBase: Double = 0.3
 }
+
+extension Theme {
+    private static var swatchCache: [String: NSImage] = [:]
+
+    /// A filled-circle bitmap for AppKit menus. SwiftUI shapes are dropped from menu labels and
+    /// SF Symbols become monochrome template images there, so menus need a real non-template image.
+    static func swatch(_ palette: PaletteColor, diameter: CGFloat = 12) -> NSImage {
+        let key = "\(palette.rawValue)-\(diameter)"
+        if let cached = swatchCache[key] { return cached }
+        let image = NSImage(size: NSSize(width: diameter, height: diameter), flipped: false) { rect in
+            NSColor(color(palette)).setFill()
+            NSBezierPath(ovalIn: rect.insetBy(dx: 0.5, dy: 0.5)).fill()
+            return true
+        }
+        image.isTemplate = false
+        swatchCache[key] = image
+        return image
+    }
+}

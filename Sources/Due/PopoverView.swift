@@ -6,8 +6,10 @@ import DueCore
 /// collapsible Done section folded in), and footer.
 struct PopoverView: View {
     @Environment(AppState.self) private var state
+    @Environment(LectureEngine.self) private var engine
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openWindow) private var openWindow
     @FocusState private var quickAddFocused: Bool
     @State private var showSettings = false
     @AppStorage("doneExpanded") private var doneExpanded = false
@@ -159,10 +161,23 @@ struct PopoverView: View {
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text("Due").font(.title3.weight(.semibold))
+            if engine.isActive {
+                recordingPill
+            }
             Spacer()
             Text(summaryText)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Button {
+                openNotes()
+            } label: {
+                Image(systemName: "note.text")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .keyboardShortcut("n", modifiers: [.command, .shift])
+            .help("Notes (⇧⌘N)")
+            .accessibilityLabel("Notes")
             Button {
                 showSettings = true
             } label: {
@@ -179,6 +194,36 @@ struct PopoverView: View {
         .padding(.horizontal, 12)
         .padding(.top, 10)
         .padding(.bottom, 4)
+    }
+
+    /// Visible whenever a lecture is being captured, even with the notes window closed,
+    /// so a live mic is never invisible. Click-through to the note.
+    private var recordingPill: some View {
+        Button {
+            openNotes()
+        } label: {
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(.red)
+                    .frame(width: 6, height: 6)
+                Text(LectureEngine.elapsedText(engine.elapsed))
+                    .font(.caption2)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 2)
+            .padding(.horizontal, 7)
+            .background(.red.opacity(0.12), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .help("Recording a lecture. Open Notes")
+        .accessibilityLabel("Recording a lecture, \(LectureEngine.elapsedText(engine.elapsed)) elapsed. Open Notes")
+    }
+
+    private func openNotes() {
+        openWindow(id: "notes")
+        NSApp.activate(ignoringOtherApps: true)
+        dismiss()
     }
 
     private var summaryText: String {

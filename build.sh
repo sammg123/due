@@ -2,8 +2,9 @@
 # Build Due.app and install it to ~/Applications.
 #
 # Signs with a stable self-signed identity ("Due Signing") when available. Falls back to
-# ad-hoc signing (--sign -), which is fine here: Due needs no TCC-gated permissions
-# (no Accessibility, no Microphone, no camera, nothing to re-grant after a rebuild).
+# ad-hoc signing (--sign -). Lecture capture uses the Microphone, and TCC grants stick to
+# the signature: with ad-hoc signing macOS re-prompts (one click) after each rebuild; a
+# stable "Due Signing" identity makes the grant survive rebuilds.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -44,7 +45,7 @@ if security find-identity -p codesigning | grep -q "$SIGN_ID"; then
     echo "==> Signing ($SIGN_ID)"
     codesign --force --sign "$SIGN_ID" --identifier com.due.tracker "$APP_DIR"
 else
-    echo "==> Signing (ad-hoc; fine, Due needs no TCC-gated permissions)"
+    echo "==> Signing (ad-hoc; macOS re-asks for Microphone once after each rebuild)"
     codesign --force --sign - --identifier com.due.tracker "$APP_DIR"
 fi
 

@@ -51,6 +51,16 @@ enum Theme {
     static let listMaxHeight: CGFloat = 440
     static let animationFast: Double = 0.15
     static let animationBase: Double = 0.3
+
+    // Notes window (same 8pt grid as the popover).
+    static let notesMinWidth: CGFloat = 640
+    static let notesMinHeight: CGFloat = 420
+    static let notesDefaultWidth: CGFloat = 820
+    static let notesDefaultHeight: CGFloat = 580
+    static let notesSidebarMinWidth: CGFloat = 220
+    static let notesSidebarIdealWidth: CGFloat = 260
+    static let notesSidebarMaxWidth: CGFloat = 340
+    static let notesEditorInset: CGFloat = 20
 }
 
 extension Theme {

@@ -4,6 +4,9 @@ import DueCore
 @main
 struct DueApp: App {
     @State private var state = AppState.loadFromDisk()
+    @State private var notesState = NotesState.loadFromDisk()
+    // App-level so a recording survives the notes window closing.
+    @State private var lectureEngine = LectureEngine()
 
     init() { DebugHooks.installIfRequested() }
 
@@ -11,16 +14,28 @@ struct DueApp: App {
         MenuBarExtra {
             PopoverView()
                 .environment(state)
+                .environment(notesState)
+                .environment(lectureEngine)
         } label: {
             MenuBarLabel()
                 .environment(state)
         }
         .menuBarExtraStyle(.window)
 
+        Window("Notes", id: "notes") {
+            NotesWindowView()
+                .environment(state)
+                .environment(notesState)
+                .environment(lectureEngine)
+        }
+        .defaultSize(width: Theme.notesDefaultWidth, height: Theme.notesDefaultHeight)
+
         // Only opened when launched as `Due --preview`: the popover in a normal window, for screenshots and dev.
         Window("Due Preview", id: "preview") {
             PopoverView()
                 .environment(state)
+                .environment(notesState)
+                .environment(lectureEngine)
         }
         .windowResizability(.contentSize)
 
@@ -56,6 +71,11 @@ struct MenuBarLabel: View {
             }
             if CommandLine.arguments.contains("--preview-settings") {
                 openWindow(id: "settings-preview")
+                NSApp.activate(ignoringOtherApps: true)
+            }
+            // `Due --notes`: straight into the notes window, for screenshots and dev.
+            if CommandLine.arguments.contains("--notes") {
+                openWindow(id: "notes")
                 NSApp.activate(ignoringOtherApps: true)
             }
         }

@@ -14,6 +14,7 @@ struct SettingsView: View {
             launchAtLoginSection
             urgencySection
             parsingSection
+            lectureSection
             courseColorsSection
             dataSection
             doneRow
@@ -117,6 +118,29 @@ struct SettingsView: View {
             set: { newValue in
                 var next = state.settings
                 next.smartParsing = newValue
+                state.updateSettings(next)
+            }
+        )
+    }
+
+    // MARK: - Lecture capture
+
+    private var lectureSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionLabel("Lecture capture")
+            Toggle("Keep audio recordings", isOn: saveLectureAudioBinding)
+            Text("Lectures transcribe on this Mac either way; off saves only the transcript.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var saveLectureAudioBinding: Binding<Bool> {
+        Binding(
+            get: { state.settings.saveLectureAudio },
+            set: { newValue in
+                var next = state.settings
+                next.saveLectureAudio = newValue
                 state.updateSettings(next)
             }
         )

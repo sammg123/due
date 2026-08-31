@@ -1,17 +1,19 @@
 # Due
 
-A macOS menu bar assignment tracker. Lives in the menu bar only (no Dock icon, no
-windows), shows how many things are due today, and lets you add and manage
-assignments from a small popover. Nothing leaves your Mac; there is no network layer
-at all.
+A macOS menu bar assignment tracker with an AI notes window. Lives in the menu bar
+(no Dock icon), shows how many things are due today, and lets you add and manage
+assignments from a small popover. A separate Notes window handles class notes:
+autosaving editor, lecture recording with live on-device transcription, and on-device
+AI cleanup. Nothing leaves your Mac; there is no network layer at all.
 
 ![Due popover](docs/popover.png)
 
 ## Install
 
 Requirements: macOS 14 or newer and the Swift toolchain (Xcode, or the Command Line
-Tools with Xcode 16+ / Swift 6). Smart parsing additionally needs macOS 26 with Apple
-Intelligence turned on; everything else works without it.
+Tools with Xcode 16+ / Swift 6). Smart parsing and the notes AI actions additionally
+need macOS 26 with Apple Intelligence turned on, and lecture transcription wants Apple
+silicon (the model runs on the Neural Engine); everything else works without them.
 
 ```
 git clone https://github.com/sammg123/due.git
@@ -94,6 +96,8 @@ Both thresholds are adjustable in Settings.
 |---|---|
 | Enter | Add the quick-add line |
 | Cmd+N | Focus the quick-add field |
+| Shift+Cmd+N | Open the Notes window |
+| Cmd+N (in Notes) | New note |
 | Esc | Close the popover |
 | Cmd+Q | Quit Due |
 
@@ -134,6 +138,30 @@ run straight out of `.build/debug`.
 - Course chips under the add field filter everything (list and week strip) to one course.
 - Right-click a group header for "Sort by due date" or "Sort by course". Drag rows to set your own order.
 
+## Notes
+
+Open with the note icon in the popover header (or Shift+Cmd+N from the popover). Notes
+are per-class documents that autosave as you type (debounced under a second, plus on
+window close and quit), searchable, and sortable by class, date edited, or name from
+the toolbar. Classes share the exact course tags and colors from the assignment list.
+
+**Lecture capture.** The mic button records the room and transcribes it live on the
+Neural Engine using NVIDIA Parakeet v3 (via FluidAudio, the same model LocalFlow
+uses; the ~500 MB download happens once and is shared between the two apps).
+Transcript chunks land in the note under a timestamped "Lecture" heading roughly
+every 30 seconds, cut at pauses so words don't get split. The audio itself is kept as
+an .m4a next to your notes (toggle in Settings under Lecture capture) and can be
+reopened from the recordings menu in the editor header. Recording survives closing
+the notes window; a red pill in the popover header shows it's still running.
+
+**AI actions.** With Apple Intelligence enabled (macOS 26), the sparkles menu offers
+Clean up writing, Summarize (adds a summary section on top), and Turn into outline.
+Long transcripts are processed in chunks. Every AI edit gets a one-click "Revert AI
+edit" in the status bar. On-device, like everything else.
+
+Notes are one JSON file each under `~/Library/Application Support/Due/Notes/`, with
+recordings in `Notes/Audio/`.
+
 ## Smart parsing
 
 With Apple Intelligence enabled (macOS 26), the add field also runs an on-device language model about half a second after you stop typing. It cleans up the title, maps loose class mentions ("for writing") onto your real course names, and reads durations. A sparkles icon in the preview line means the model's read is in use. Dates the built-in parser recognizes always win, because the model is not reliable at weekday arithmetic ("next fri"). Turn it off in Settings under Parsing. Nothing leaves the Mac.
@@ -141,13 +169,15 @@ With Apple Intelligence enabled (macOS 26), the add field also runs an on-device
 ## Development
 
 ```
-swift test            # 171 unit tests on the DueCore logic
+swift test            # 211 unit tests on the DueCore logic
 swift build
 .build/debug/Due --preview            # popover in a normal window, for screenshots
 .build/debug/Due --preview-settings   # settings pane in a window
+.build/debug/Due --notes              # straight into the notes window
 ```
 
-`DUE_DATA_PATH=/path/to/file.json` points the app at a different data file. `DUE_DEBUG=1`
+`DUE_DATA_PATH=/path/to/file.json` points the app at a different data file and
+`DUE_NOTES_PATH=/path/to/dir` at a different notes directory. `DUE_DEBUG=1`
 enables two dev signals: `kill -USR1 <pid>` clicks the menu bar item, `kill -USR2 <pid>`
 sends Escape, which lets a script drive the real popover without Accessibility access.
 

@@ -84,15 +84,18 @@ public struct DueSettings: Codable, Equatable, Sendable {
     public var launchAtLogin: Bool
     /// Use the on-device language model (Apple Intelligence) to parse quick-add text when available.
     public var smartParsing: Bool
+    /// Keep the .m4a of each lecture recording alongside the notes (transcription happens either way).
+    public var saveLectureAudio: Bool
 
     public static let defaultSoonDays = 3
     public static let defaultWeekDays = 7
 
-    public init(soonDays: Int = DueSettings.defaultSoonDays, weekDays: Int = DueSettings.defaultWeekDays, launchAtLogin: Bool = false, smartParsing: Bool = true) {
+    public init(soonDays: Int = DueSettings.defaultSoonDays, weekDays: Int = DueSettings.defaultWeekDays, launchAtLogin: Bool = false, smartParsing: Bool = true, saveLectureAudio: Bool = true) {
         self.soonDays = soonDays
         self.weekDays = weekDays
         self.launchAtLogin = launchAtLogin
         self.smartParsing = smartParsing
+        self.saveLectureAudio = saveLectureAudio
     }
 
     public init(from decoder: Decoder) throws {
@@ -101,6 +104,7 @@ public struct DueSettings: Codable, Equatable, Sendable {
         weekDays = try c.decodeIfPresent(Int.self, forKey: .weekDays) ?? DueSettings.defaultWeekDays
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
         smartParsing = try c.decodeIfPresent(Bool.self, forKey: .smartParsing) ?? true
+        saveLectureAudio = try c.decodeIfPresent(Bool.self, forKey: .saveLectureAudio) ?? true
     }
 }
 

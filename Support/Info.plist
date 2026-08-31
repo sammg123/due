@@ -20,6 +20,8 @@
 	<string>14.0</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Due records lecture audio to transcribe it into your notes. Audio and transcripts stay on this Mac.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Local-only assignment tracker. No network.</string>
 </dict>

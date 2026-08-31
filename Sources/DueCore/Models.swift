@@ -86,16 +86,22 @@ public struct DueSettings: Codable, Equatable, Sendable {
     public var smartParsing: Bool
     /// Keep the .m4a of each lecture recording alongside the notes (transcription happens either way).
     public var saveLectureAudio: Bool
+    /// Which model runs the notes AI actions: "auto" (best local Ollama model, else Apple
+    /// Intelligence), "apple", or an Ollama model name. Everything runs on this Mac.
+    public var notesAIModel: String
 
     public static let defaultSoonDays = 3
     public static let defaultWeekDays = 7
+    public static let autoAIModel = "auto"
+    public static let appleAIModel = "apple"
 
-    public init(soonDays: Int = DueSettings.defaultSoonDays, weekDays: Int = DueSettings.defaultWeekDays, launchAtLogin: Bool = false, smartParsing: Bool = true, saveLectureAudio: Bool = true) {
+    public init(soonDays: Int = DueSettings.defaultSoonDays, weekDays: Int = DueSettings.defaultWeekDays, launchAtLogin: Bool = false, smartParsing: Bool = true, saveLectureAudio: Bool = true, notesAIModel: String = DueSettings.autoAIModel) {
         self.soonDays = soonDays
         self.weekDays = weekDays
         self.launchAtLogin = launchAtLogin
         self.smartParsing = smartParsing
         self.saveLectureAudio = saveLectureAudio
+        self.notesAIModel = notesAIModel
     }
 
     public init(from decoder: Decoder) throws {
@@ -105,6 +111,7 @@ public struct DueSettings: Codable, Equatable, Sendable {
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
         smartParsing = try c.decodeIfPresent(Bool.self, forKey: .smartParsing) ?? true
         saveLectureAudio = try c.decodeIfPresent(Bool.self, forKey: .saveLectureAudio) ?? true
+        notesAIModel = try c.decodeIfPresent(String.self, forKey: .notesAIModel) ?? DueSettings.autoAIModel
     }
 }
 

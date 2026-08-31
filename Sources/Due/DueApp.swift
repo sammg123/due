@@ -78,20 +78,28 @@ struct MenuBarLabel: View {
                 openWindow(id: "notes")
                 NSApp.activate(ignoringOtherApps: true)
             }
-            // `Due --ai-test <cleanUp|summarize|outline> <file>`: run a note AI action inside
+            // `Due --ai-test <cleanUp|summarize|outline> <file>` or
+            // `Due --ai-test custom <file> <instruction>`: run a note AI action inside
             // the real app process and exit. Prints result or error to stdout for dev use.
             if let idx = CommandLine.arguments.firstIndex(of: "--ai-test") {
                 let args = CommandLine.arguments
-                let action = args.count > idx + 1 ? NoteAIAction(rawValue: args[idx + 1]) : nil
+                let kind = args.count > idx + 1 ? args[idx + 1] : ""
                 let text = args.count > idx + 2 ? (try? String(contentsOfFile: args[idx + 2], encoding: .utf8)) : nil
+                let instruction = args.count > idx + 3 ? args[idx + 3] : nil
+                let modelSetting = state.settings.notesAIModel
                 Task {
-                    guard let action, let text else {
-                        print("usage: Due --ai-test <cleanUp|summarize|outline> <file>")
-                        exit(2)
-                    }
                     do {
-                        let out = try await NoteAI().run(action, on: text)
-                        print("AI-TEST OK (\(out.count) chars)\n\(out)")
+                        let ai = NoteAI()
+                        let out: String
+                        if kind == "custom", let text, let instruction {
+                            out = try await ai.runCustom(instruction, on: text, modelSetting: modelSetting)
+                        } else if let action = NoteAIAction(rawValue: kind), let text {
+                            out = try await ai.run(action, on: text, modelSetting: modelSetting)
+                        } else {
+                            print("usage: Due --ai-test <cleanUp|summarize|outline> <file> | custom <file> <instruction>")
+                            exit(2)
+                        }
+                        print("AI-TEST OK via \(ai.engineName ?? "?") (\(out.count) chars)\n\(out)")
                         exit(0)
                     } catch {
                         print("AI-TEST ERR: \(String(describing: error))")

@@ -38,31 +38,58 @@ enum NoteAIAction: String, CaseIterable, Identifiable {
 }
 
 enum NoteAIError: LocalizedError {
-    case unavailable
+    case noEngine
     case emptyNote
     case noUsableOutput
+    case noteTooLong
 
     var errorDescription: String? {
         switch self {
-        case .unavailable: return "Apple Intelligence is unavailable on this Mac"
+        case .noEngine: return "No AI model available. Enable Apple Intelligence or start Ollama"
         case .emptyNote: return "Nothing to work with yet. Write or record something first"
         case .noUsableOutput: return "The model didn't return usable text; the note is unchanged"
+        case .noteTooLong: return "This note is too long for instruction edits. Run Fix up or Outline first"
         }
     }
 }
 
-/// Note transformations via Apple's on-device model (FoundationModels, macOS 26). Long notes
-/// (lecture transcripts) are processed in `TextChunker` chunks because the model shares a
-/// 4,096-token window between prompt and response. Same availability-gating pattern as
-/// `SmartQuickAddParser`: compiles at Due's macOS 14 target, activates on 26.
+/// Which local model runs a notes AI action. Resolved per run from the setting:
+/// an Ollama model when one is installed and running (stronger, bigger context),
+/// else Apple's on-device model (macOS 26). Both are fully local.
+enum NoteAIEngine {
+    case apple
+    case ollama(model: String)
+
+    /// Chars per model call. Apple's model shares a 4,096-token window between prompt and
+    /// response; Ollama runs with a 16k context, so chunks can be much larger.
+    var chunkCharacterLimit: Int {
+        switch self {
+        case .apple: return 4_500
+        case .ollama: return 12_000
+        }
+    }
+
+    var shortName: String {
+        switch self {
+        case .apple: return "Apple Intelligence"
+        case .ollama(let model): return String(model.split(separator: ":").first ?? Substring(model))
+        }
+    }
+}
+
+/// Note transformations on a local model, chunked via `TextChunker` for long notes
+/// (lecture transcripts). The FoundationModels path uses the same availability-gating
+/// pattern as `SmartQuickAddParser`: compiles at Due's macOS 14 target, activates on 26.
 @MainActor
 @Observable
 final class NoteAI {
     private(set) var isRunning = false
-    private(set) var runningAction: NoteAIAction?
-
-    /// Chars per model call: chunk + response must share the window (~3.5 chars/token).
-    static let chunkCharacterLimit = 4_500
+    /// What the status bar shows while running: an action label or "Editing".
+    private(set) var runningLabel: String?
+    /// Short model name while running, for the status bar.
+    private(set) var engineName: String?
+    /// Whether a local Ollama server with at least one model answered the last probe.
+    private(set) var ollamaAvailable = false
 
     static var isAvailable: Bool {
         #if canImport(FoundationModels)
@@ -88,43 +115,148 @@ final class NoteAI {
         #endif
     }
 
+    var canRun: Bool { Self.isAvailable || ollamaAvailable }
+
+    func refreshAvailability() async {
+        ollamaAvailable = await OllamaClient.installedModels()?.isEmpty == false
+    }
+
+    /// Maps the settings value ("auto" / "apple" / an Ollama model name) onto a live engine.
+    /// "auto" prefers the best installed Ollama model: stronger and, unlike Apple's model,
+    /// it doesn't refuse symbol-dense notes as an "unsupported language".
+    static func resolveEngine(setting: String) async throws -> NoteAIEngine {
+        switch setting {
+        case DueSettings.appleAIModel:
+            guard isAvailable else { throw NoteAIError.noEngine }
+            return .apple
+        case DueSettings.autoAIModel:
+            if let installed = await OllamaClient.installedModels(),
+               let pick = OllamaModels.preferred(from: installed) {
+                return .ollama(model: pick)
+            }
+            guard isAvailable else { throw NoteAIError.noEngine }
+            return .apple
+        default:
+            return .ollama(model: setting)
+        }
+    }
+
     /// Returns the new body for `cleanUp`/`outline`, or the summary text for `summarize`
     /// (the caller inserts it). Never returns an empty result; it throws instead.
-    func run(_ action: NoteAIAction, on body: String) async throws -> String {
-        #if canImport(FoundationModels)
-        guard #available(macOS 26, *), Self.isAvailable else { throw NoteAIError.unavailable }
-        let chunks = TextChunker.chunks(body, limit: Self.chunkCharacterLimit)
-        guard !chunks.isEmpty else { throw NoteAIError.emptyNote }
+    func run(_ action: NoteAIAction, on body: String, modelSetting: String) async throws -> String {
         isRunning = true
-        runningAction = action
+        runningLabel = action.label
+        // engineName deliberately survives the run (it names the last engine used).
         defer {
             isRunning = false
-            runningAction = nil
+            runningLabel = nil
         }
+        let engine = try await Self.resolveEngine(setting: modelSetting)
+        engineName = engine.shortName
+        let chunks = TextChunker.chunks(body, limit: engine.chunkCharacterLimit)
+        guard !chunks.isEmpty else { throw NoteAIError.emptyNote }
         switch action {
         case .cleanUp:
-            return try await rewrite(chunks, instructions: Self.cleanUpInstructions, fallbackToOriginal: true)
+            return try await rewrite(chunks, engine: engine, instructions: Self.cleanUpText, fallbackToOriginal: true)
         case .outline:
-            return try await rewrite(chunks, instructions: Self.outlineInstructions, fallbackToOriginal: false)
+            return try await rewrite(chunks, engine: engine, instructions: Self.outlineText, fallbackToOriginal: false)
         case .summarize:
-            return try await summarize(chunks)
+            return try await summarize(chunks, engine: engine)
         }
-        #else
-        throw NoteAIError.unavailable
-        #endif
     }
-}
 
-#if canImport(FoundationModels)
-
-@available(macOS 26, *)
-extension NoteAI {
-    // Permissive guardrails: designed for exactly this kind of text-to-text transformation
-    // (same configuration LocalFlow's polisher uses). Nonisolated so the timeout-raced
-    // model call can construct its session off the main actor.
-    private nonisolated static var model: SystemLanguageModel {
-        SystemLanguageModel(guardrails: .permissiveContentTransformations)
+    /// Free-form instruction edit ("turn the key terms into a table", "make flashcards").
+    /// Applied to the whole note in ONE model call: a global instruction chunked per-piece
+    /// would run once per chunk, so overlong notes error instead. An empty note is allowed;
+    /// instructions like "write a template for chem lecture notes" generate from scratch.
+    func runCustom(_ instruction: String, on body: String, modelSetting: String) async throws -> String {
+        isRunning = true
+        runningLabel = "Editing"
+        defer {
+            isRunning = false
+            runningLabel = nil
+        }
+        let engine = try await Self.resolveEngine(setting: modelSetting)
+        engineName = engine.shortName
+        guard body.count <= engine.chunkCharacterLimit else { throw NoteAIError.noteTooLong }
+        let noteSection = body.isEmpty ? "Their note is currently empty." : "Their note:\n\(body)"
+        let prompt = "Instruction from the student: \(instruction)\n\n\(noteSection)"
+        guard let output = await respond(engine: engine, instructions: Self.customEditText, prompt: prompt),
+              Self.usable(output)
+        else { throw NoteAIError.noUsableOutput }
+        return output
     }
+
+    // MARK: - Chunk loops
+
+    /// One model call per chunk. `fallbackToOriginal` keeps a chunk untouched when the model
+    /// returns junk (fix-up must never lose content); outline chunks fail hard instead.
+    /// No length-ratio gate here: outlines legitimately compress notes hard, and fix-up
+    /// legitimately expands them into structure. Only refusals/empties are junk.
+    private func rewrite(_ chunks: [String], engine: NoteAIEngine, instructions: String, fallbackToOriginal: Bool) async throws -> String {
+        var pieces: [String] = []
+        for chunk in chunks {
+            if let output = await respond(engine: engine, instructions: instructions, prompt: chunk),
+               Self.usable(output) {
+                pieces.append(output)
+            } else if fallbackToOriginal {
+                pieces.append(chunk)
+            } else {
+                throw NoteAIError.noUsableOutput
+            }
+        }
+        return pieces.joined(separator: "\n\n")
+    }
+
+    private func summarize(_ chunks: [String], engine: NoteAIEngine) async throws -> String {
+        var partials: [String] = []
+        for chunk in chunks {
+            if let output = await respond(engine: engine, instructions: Self.summarizeText, prompt: chunk),
+               Self.usable(output) {
+                partials.append(output)
+            }
+        }
+        guard !partials.isEmpty else { throw NoteAIError.noUsableOutput }
+        guard partials.count > 1 else { return partials[0] }
+        let combined = partials.joined(separator: "\n")
+        guard let merged = await respond(engine: engine, instructions: Self.combineText, prompt: combined),
+              Self.usable(merged)
+        else { return combined }
+        return merged
+    }
+
+    private func respond(engine: NoteAIEngine, instructions: String, prompt: String) async -> String? {
+        switch engine {
+        case .ollama(let model):
+            do {
+                return try await OllamaClient.chat(model: model, system: instructions, prompt: prompt)
+            } catch {
+                NSLog("Due: Ollama call failed (\(model)): \(String(describing: error))")
+                return nil
+            }
+        case .apple:
+            #if canImport(FoundationModels)
+            guard #available(macOS 26, *) else { return nil }
+            return await Self.appleRespond(instructions: instructions, prompt: prompt)
+            #else
+            return nil
+            #endif
+        }
+    }
+
+    /// Refusals come back AS the string with permissive guardrails; that (and empty) is the
+    /// only junk worth rejecting. Length ratios are NOT checked: a valid outline can be a
+    /// fifth of the input and a valid fix-up double it.
+    private static func usable(_ output: String) -> Bool {
+        guard !output.isEmpty else { return false }
+        let lowered = output.lowercased()
+        for refusal in ["i can't", "i cannot", "i'm sorry", "i am sorry", "i'm unable"] where lowered.hasPrefix(refusal) {
+            return false
+        }
+        return true
+    }
+
+    // MARK: - Instructions (shared by both engines)
 
     /// The markdown dialect Due's reading view renders. Shared by every action so the model
     /// output always lands renderable.
@@ -140,10 +272,11 @@ extension NoteAI {
         line joined by arrows, for example: flow: sort the data -> compute quartiles -> \
         compute fences -> flag outliers. Never make this a heading.
         - '---' alone on a line to separate major sections.
+        Never use LaTeX or $...$ math; write formulas in `code` backticks.
         Reply with ONLY the formatted notes, no preamble.
         """
 
-    private static let cleanUpInstructions = Instructions("""
+    private static let cleanUpText = """
         You fix up a student's rough class notes: correct grammar, punctuation, and
         transcription run-ons, then reorganize into clean structure with headings, bullets,
         and bold key terms. Keep the student's meaning and EVERY fact exactly as written.
@@ -157,72 +290,57 @@ extension NoteAI {
         - **IQR** = `Q3 - Q1`: measures how spread out the middle 50% is.
 
         flow: sort the data -> compute the fences -> flag values outside
-        """)
+        """
 
-    private static let outlineInstructions = Instructions("""
+    private static let outlineText = """
         You turn a student's class notes into a structured study outline: '##' headings per
         topic, nested bullets for the points under each, key terms bolded. Keep every fact
         from the notes and add none. An outline is allowed to be much shorter than the notes.
 
         \(formatSpec)
-        """)
+        """
 
-    private static let summarizeInstructions = Instructions("""
+    private static let summarizeText = """
         You summarize a student's class notes into 3 to 6 bullets capturing the key ideas,
         definitions, and takeaways. Start each bullet with the **bolded** concept it covers.
         Add nothing the notes don't say.
 
         \(formatSpec)
-        """)
+        """
 
-    private static let combineInstructions = Instructions("""
+    private static let combineText = """
         You merge several partial summaries of one lecture into a single deduplicated
         summary of at most 8 bullets, each starting with its **bolded** concept.
 
         \(formatSpec)
-        """)
+        """
 
-    /// One model call per chunk. `fallbackToOriginal` keeps a chunk untouched when the model
-    /// returns junk (fix-up must never lose content); outline chunks fail hard instead.
-    /// No length-ratio gate here: outlines legitimately compress notes hard, and fix-up
-    /// legitimately expands them into structure. Only refusals/empties are junk.
-    fileprivate func rewrite(_ chunks: [String], instructions: Instructions, fallbackToOriginal: Bool) async throws -> String {
-        var pieces: [String] = []
-        for chunk in chunks {
-            if let output = await Self.respond(instructions: instructions, prompt: chunk),
-               Self.usable(output) {
-                pieces.append(output)
-            } else if fallbackToOriginal {
-                pieces.append(chunk)
-            } else {
-                throw NoteAIError.noUsableOutput
-            }
-        }
-        return pieces.joined(separator: "\n\n")
-    }
+    private static let customEditText = """
+        You edit a student's class notes exactly as their instruction asks: rewrite,
+        restructure, add, remove, or transform as requested. Your reply REPLACES the whole
+        note, so include everything that should remain. Unless the instruction says
+        otherwise, keep every existing fact.
 
-    fileprivate func summarize(_ chunks: [String]) async throws -> String {
-        var partials: [String] = []
-        for chunk in chunks {
-            if let output = await Self.respond(instructions: Self.summarizeInstructions, prompt: chunk),
-               Self.usable(output) {
-                partials.append(output)
-            }
-        }
-        guard !partials.isEmpty else { throw NoteAIError.noUsableOutput }
-        guard partials.count > 1 else { return partials[0] }
-        let combined = partials.joined(separator: "\n")
-        guard let merged = await Self.respond(instructions: Self.combineInstructions, prompt: combined),
-              !merged.isEmpty
-        else { return combined }
-        return merged
+        \(formatSpec)
+        """
+}
+
+#if canImport(FoundationModels)
+
+@available(macOS 26, *)
+extension NoteAI {
+    // Permissive guardrails: designed for exactly this kind of text-to-text transformation
+    // (same configuration LocalFlow's polisher uses). Nonisolated so the timeout-raced
+    // model call can construct its session off the main actor.
+    private nonisolated static var model: SystemLanguageModel {
+        SystemLanguageModel(guardrails: .permissiveContentTransformations)
     }
 
     /// Per-chunk model call. A FRESH session every time is deliberate: a session's 4,096-token
     /// window spans its whole transcript, so reusing one across chunks would overflow on long
     /// notes (same reason LocalFlow's polisher makes a session per dictation). The timeout keeps
     /// a hung model call from leaving `isRunning` stuck forever.
-    private static func respond(instructions: Instructions, prompt: String) async -> String? {
+    fileprivate static func appleRespond(instructions instructionsText: String, prompt: String) async -> String? {
         // TOKENS, not characters (~3.5 chars/token): fix-up expands notes into structure,
         // so budget a bit over the input's own token count. A near-limit 4,500-char chunk
         // is ~1,300 prompt tokens + ~1,500 response tokens, safely inside the 4,096 window.
@@ -232,13 +350,13 @@ extension NoteAI {
         )
         do {
             return try await withTimeout(seconds: 60) {
-                let session = LanguageModelSession(model: model, instructions: instructions)
+                let session = LanguageModelSession(model: model, instructions: Instructions(instructionsText))
                 let response = try await session.respond(to: prompt, options: options)
                 return response.content.trimmingCharacters(in: .whitespacesAndNewlines)
             }
         } catch {
             // Full error, not just localizedDescription: FoundationModels errors carry the
-            // useful detail (guardrail case, context size, assets) in the enum payload.
+            // useful detail (guardrail case, context size, language rejection) in the payload.
             NSLog("Due: note AI call failed: \(String(describing: error))")
             return nil
         }
@@ -261,18 +379,6 @@ extension NoteAI {
             guard let result = try await group.next() else { throw TimedOut() }
             return result
         }
-    }
-
-    /// Refusals come back AS the string with permissive guardrails; that (and empty) is the
-    /// only junk worth rejecting. Length ratios are NOT checked: a valid outline can be a
-    /// fifth of the input and a valid fix-up double it.
-    private static func usable(_ output: String) -> Bool {
-        guard !output.isEmpty else { return false }
-        let lowered = output.lowercased()
-        for refusal in ["i can't", "i cannot", "i'm sorry", "i am sorry", "i'm unable"] where lowered.hasPrefix(refusal) {
-            return false
-        }
-        return true
     }
 }
 

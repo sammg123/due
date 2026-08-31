@@ -17,9 +17,11 @@ struct NoteEditorView: View {
     @State private var aiError: String?
     @State private var showNewCourseField = false
     @State private var newCourseText = ""
+    @State private var aiPrompt = ""
     @State private var mode: ViewMode = .write
     @FocusState private var newCourseFocused: Bool
     @FocusState private var bodyFocused: Bool
+    @FocusState private var aiPromptFocused: Bool
 
     private var note: Note? { notes.note(noteID) }
 
@@ -52,6 +54,7 @@ struct NoteEditorView: View {
                     .padding(.vertical, 8)
                     .focused($bodyFocused)
             }
+            aiPromptBar(note)
             Divider()
             statusBar(note)
         }
@@ -62,6 +65,7 @@ struct NoteEditorView: View {
         }
         // Notes with content open formatted; empty notes open ready to type.
         .onAppear { mode = note.body.isEmpty ? .write : .read }
+        .task { await ai.refreshAvailability() }
         // The toolbar picker and tap-to-edit both land ready to type.
         .onChange(of: mode) { _, newMode in
             if newMode == .write { bodyFocused = true }
@@ -271,19 +275,20 @@ struct NoteEditorView: View {
         } label: {
             Label("AI", systemImage: "sparkles")
         }
-        .disabled(!NoteAI.isAvailable || ai.isRunning || note.body.isEmpty)
-        .help(NoteAI.isAvailable
+        .disabled(!ai.canRun || ai.isRunning || note.body.isEmpty)
+        .help(ai.canRun
             ? "Clean up, summarize, or outline this note on-device"
-            : (NoteAI.unavailableReason ?? "Apple Intelligence is unavailable"))
+            : "No local AI model: enable Apple Intelligence or start Ollama")
         .accessibilityLabel("AI actions")
     }
 
     private func runAI(_ action: NoteAIAction, on note: Note) {
         aiError = nil
         let original = note.body
+        let modelSetting = appState.settings.notesAIModel
         Task {
             do {
-                let result = try await ai.run(action, on: original)
+                let result = try await ai.run(action, on: original, modelSetting: modelSetting)
                 // The note may have changed while the model ran (typing, transcript chunks);
                 // applying a stale rewrite would drop that. Skip instead.
                 guard notes.note(noteID)?.body == original else {
@@ -306,6 +311,73 @@ struct NoteEditorView: View {
         }
     }
 
+    // MARK: - AI prompt bar
+
+    /// ChatGPT-style instruction box: type what to do to the note, the model rewrites it.
+    /// Works in both modes; every edit gets the same one-click revert as the menu actions.
+    private func aiPromptBar(_ note: Note) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 12))
+                .foregroundStyle(aiPromptFocused ? Color.accentColor : .secondary)
+            TextField(
+                "Ask AI to edit this note (\"turn the key terms into a table\", \"make flashcards\")",
+                text: $aiPrompt
+            )
+            .textFieldStyle(.plain)
+            .font(.system(size: 13))
+            .focused($aiPromptFocused)
+            .onSubmit { submitPrompt(note) }
+            .onExitCommand { aiPrompt = "" }
+            .disabled(ai.isRunning)
+            if !aiPrompt.trimmingCharacters(in: .whitespaces).isEmpty, !ai.isRunning {
+                Button {
+                    submitPrompt(note)
+                } label: {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 17))
+                        .foregroundStyle(Color.accentColor)
+                }
+                .buttonStyle(.plain)
+                .help("Apply this edit")
+                .accessibilityLabel("Apply AI edit")
+            }
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 10)
+        .background(.quaternary.opacity(0.55), in: RoundedRectangle(cornerRadius: Theme.rowCornerRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.rowCornerRadius)
+                .strokeBorder(aiPromptFocused ? Color.accentColor.opacity(0.5) : .clear, lineWidth: 1)
+        )
+        .padding(.horizontal, Theme.notesEditorInset)
+        .padding(.vertical, 8)
+        .opacity(ai.canRun ? 1 : 0.4)
+        .help(ai.canRun ? "" : "No local AI model: enable Apple Intelligence or start Ollama")
+    }
+
+    private func submitPrompt(_ note: Note) {
+        let instruction = aiPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !instruction.isEmpty, ai.canRun, !ai.isRunning else { return }
+        aiError = nil
+        let original = note.body
+        let modelSetting = appState.settings.notesAIModel
+        Task {
+            do {
+                let result = try await ai.runCustom(instruction, on: original, modelSetting: modelSetting)
+                guard notes.note(noteID)?.body == original else {
+                    aiError = "The note changed while the model was working. Try again."
+                    return
+                }
+                notes.applyAIEdit(noteID, body: result)
+                aiPrompt = ""
+                mode = .read
+            } catch {
+                aiError = error.localizedDescription
+            }
+        }
+    }
+
     // MARK: - Status bar
 
     private func statusBar(_ note: Note) -> some View {
@@ -319,7 +391,7 @@ struct NoteEditorView: View {
                 HStack(spacing: 4) {
                     ProgressView()
                         .controlSize(.mini)
-                    Text(ai.runningAction.map { "\($0.label)…" } ?? "Working…")
+                    Text(runningText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -361,5 +433,11 @@ struct NoteEditorView: View {
         }
         .padding(.horizontal, Theme.notesEditorInset)
         .padding(.vertical, 7)
+    }
+
+    private var runningText: String {
+        let action = ai.runningLabel.map { "\($0)…" } ?? "Working…"
+        guard let engine = ai.engineName else { return action }
+        return "\(action) (\(engine))"
     }
 }

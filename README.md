@@ -154,10 +154,15 @@ an .m4a next to your notes (toggle in Settings under Lecture capture) and can be
 reopened from the recordings menu in the editor header. Recording survives closing
 the notes window; a red pill in the popover header shows it's still running.
 
-**AI actions.** With Apple Intelligence enabled (macOS 26), the sparkles menu offers
-Clean up writing, Summarize (adds a summary section on top), and Turn into outline.
-Long transcripts are processed in chunks. Every AI edit gets a one-click "Revert AI
-edit" in the status bar. On-device, like everything else.
+**AI actions.** The sparkles menu offers Fix up & format, Summarize (adds a summary
+section on top), and Turn into outline, and the input bar under the note takes free
+instructions ("turn the key terms into a table", "make flashcards"). Everything is
+formatted for the built-in reading view (headings, bullets, tables, callouts, flow
+diagrams) and every AI edit gets a one-click "Revert AI edit" in the status bar.
+Model: if [Ollama](https://ollama.com) is running locally, Due auto-picks the best
+installed model (configurable under Settings > Notes AI, loopback only, nothing
+leaves the Mac); otherwise it uses Apple Intelligence (macOS 26). Long transcripts
+are processed in chunks.
 
 Notes are one JSON file each under `~/Library/Application Support/Due/Notes/`, with
 recordings in `Notes/Audio/`.

@@ -14,6 +14,7 @@ struct SettingsView: View {
             launchAtLoginSection
             urgencySection
             parsingSection
+            notesAISection
             lectureSection
             courseColorsSection
             dataSection
@@ -121,6 +122,72 @@ struct SettingsView: View {
                 state.updateSettings(next)
             }
         )
+    }
+
+    // MARK: - Notes AI
+
+    @State private var installedOllamaModels: [String]?
+
+    private var notesAISection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionLabel("Notes AI")
+            Menu {
+                modelChoice(DueSettings.autoAIModel, label: "Automatic (best available)")
+                modelChoice(DueSettings.appleAIModel, label: "Apple Intelligence")
+                if let models = installedOllamaModels, !models.isEmpty {
+                    Divider()
+                    ForEach(models, id: \.self) { model in
+                        modelChoice(model, label: model)
+                    }
+                }
+            } label: {
+                Text(currentModelLabel)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("Which local model runs Fix up, Summarize, and Outline")
+            .accessibilityLabel("Notes AI model")
+            Text(notesAICaption)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .task {
+            installedOllamaModels = await OllamaClient.installedModels()?
+                .filter { !$0.localizedCaseInsensitiveContains("embed") }
+        }
+    }
+
+    private func modelChoice(_ value: String, label: String) -> some View {
+        Button {
+            var next = state.settings
+            next.notesAIModel = value
+            state.updateSettings(next)
+        } label: {
+            if state.settings.notesAIModel == value {
+                Text("\(label) \u{2713}")
+            } else {
+                Text(label)
+            }
+        }
+    }
+
+    private var currentModelLabel: String {
+        switch state.settings.notesAIModel {
+        case DueSettings.autoAIModel: return "Automatic (best available)"
+        case DueSettings.appleAIModel: return "Apple Intelligence"
+        case let model: return model
+        }
+    }
+
+    private var notesAICaption: String {
+        if state.settings.notesAIModel == DueSettings.autoAIModel {
+            if let models = installedOllamaModels, let pick = OllamaModels.preferred(from: models) {
+                return "Using \(pick) via Ollama. Everything runs on this Mac."
+            }
+            if NoteAI.isAvailable { return "Using Apple Intelligence. Nothing leaves the device." }
+            return "No model available. Enable Apple Intelligence or run Ollama."
+        }
+        return "Everything runs on this Mac."
     }
 
     // MARK: - Lecture capture

@@ -14,7 +14,7 @@ enum NoteAIAction: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .cleanUp: return "Clean up writing"
+        case .cleanUp: return "Fix up & format"
         case .summarize: return "Summarize"
         case .outline: return "Turn into outline"
         }
@@ -30,7 +30,7 @@ enum NoteAIAction: String, CaseIterable, Identifiable {
 
     var help: String {
         switch self {
-        case .cleanUp: return "Fix grammar and structure without changing meaning"
+        case .cleanUp: return "Restructure into clean formatted notes, keeping every fact"
         case .summarize: return "Add a summary section at the top"
         case .outline: return "Restructure the note as a study outline"
         }
@@ -126,38 +126,71 @@ extension NoteAI {
         SystemLanguageModel(guardrails: .permissiveContentTransformations)
     }
 
+    /// The markdown dialect Due's reading view renders. Shared by every action so the model
+    /// output always lands renderable.
+    private static let formatSpec = """
+        Formatting rules for your reply (Due renders these):
+        - '## ' for topic headings, '### ' for sub-headings.
+        - '- ' bullets, nested with two leading spaces per level; '1. ' for ordered steps.
+        - **bold** ONLY the term a line defines (one or two bolds per line at most); \
+        *italics* for emphasis; `code` for formulas and symbols.
+        - '> ' for one-line callouts (definitions worth remembering, exam warnings).
+        - A markdown table (| a | b | rows) when the notes compare things.
+        - When the notes describe a step-by-step process, put it on ONE plain lowercase \
+        line joined by arrows, for example: flow: sort the data -> compute quartiles -> \
+        compute fences -> flag outliers. Never make this a heading.
+        - '---' alone on a line to separate major sections.
+        Reply with ONLY the formatted notes, no preamble.
+        """
+
     private static let cleanUpInstructions = Instructions("""
-        You clean up a student's rough class notes. Fix grammar, punctuation, casing, and
-        run-on transcription into readable sentences and short paragraphs. Keep the student's
-        meaning, wording style, and every fact exactly as written. Never add information,
-        never drop a point, never editorialize. Keep any lines starting with '#' unchanged.
-        Reply with ONLY the cleaned text, no preamble.
+        You fix up a student's rough class notes: correct grammar, punctuation, and
+        transcription run-ons, then reorganize into clean structure with headings, bullets,
+        and bold key terms. Keep the student's meaning and EVERY fact exactly as written.
+        Never add information, never drop a point, never editorialize.
+
+        \(formatSpec)
+
+        Example: "iqr = q3-q1 measures spread of middle 50. to find outliers sort data then \
+        get fences then flag whats outside" becomes:
+        ## Interquartile Range
+        - **IQR** = `Q3 - Q1`: measures how spread out the middle 50% is.
+
+        flow: sort the data -> compute the fences -> flag values outside
         """)
 
     private static let outlineInstructions = Instructions("""
-        You turn a student's class notes into a structured study outline. Use short '##'
-        headings for topics and '-' bullets for points, nesting with two spaces where it
-        helps. Keep every fact from the notes and add none. Reply with ONLY the outline,
-        no preamble.
+        You turn a student's class notes into a structured study outline: '##' headings per
+        topic, nested bullets for the points under each, key terms bolded. Keep every fact
+        from the notes and add none. An outline is allowed to be much shorter than the notes.
+
+        \(formatSpec)
         """)
 
     private static let summarizeInstructions = Instructions("""
-        You summarize a student's class notes. Reply with ONLY 3 to 6 '-' bullets capturing
-        the key ideas, definitions, and takeaways, no preamble.
+        You summarize a student's class notes into 3 to 6 bullets capturing the key ideas,
+        definitions, and takeaways. Start each bullet with the **bolded** concept it covers.
+        Add nothing the notes don't say.
+
+        \(formatSpec)
         """)
 
     private static let combineInstructions = Instructions("""
-        You merge several partial summaries of one lecture into a single summary. Reply with
-        ONLY at most 8 '-' bullets, deduplicated, no preamble.
+        You merge several partial summaries of one lecture into a single deduplicated
+        summary of at most 8 bullets, each starting with its **bolded** concept.
+
+        \(formatSpec)
         """)
 
     /// One model call per chunk. `fallbackToOriginal` keeps a chunk untouched when the model
-    /// returns junk (clean-up must never lose content); outline chunks fail hard instead.
+    /// returns junk (fix-up must never lose content); outline chunks fail hard instead.
+    /// No length-ratio gate here: outlines legitimately compress notes hard, and fix-up
+    /// legitimately expands them into structure. Only refusals/empties are junk.
     fileprivate func rewrite(_ chunks: [String], instructions: Instructions, fallbackToOriginal: Bool) async throws -> String {
         var pieces: [String] = []
         for chunk in chunks {
             if let output = await Self.respond(instructions: instructions, prompt: chunk),
-               Self.plausible(output: output, input: chunk) {
+               Self.usable(output) {
                 pieces.append(output)
             } else if fallbackToOriginal {
                 pieces.append(chunk)
@@ -172,7 +205,7 @@ extension NoteAI {
         var partials: [String] = []
         for chunk in chunks {
             if let output = await Self.respond(instructions: Self.summarizeInstructions, prompt: chunk),
-               !output.isEmpty {
+               Self.usable(output) {
                 partials.append(output)
             }
         }
@@ -190,9 +223,12 @@ extension NoteAI {
     /// notes (same reason LocalFlow's polisher makes a session per dictation). The timeout keeps
     /// a hung model call from leaving `isRunning` stuck forever.
     private static func respond(instructions: Instructions, prompt: String) async -> String? {
+        // TOKENS, not characters (~3.5 chars/token): fix-up expands notes into structure,
+        // so budget a bit over the input's own token count. A near-limit 4,500-char chunk
+        // is ~1,300 prompt tokens + ~1,500 response tokens, safely inside the 4,096 window.
         let options = GenerationOptions(
             sampling: .greedy, // deterministic transformation
-            maximumResponseTokens: max(512, prompt.count / 2)
+            maximumResponseTokens: max(1024, prompt.count / 3)
         )
         do {
             return try await withTimeout(seconds: 60) {
@@ -201,7 +237,9 @@ extension NoteAI {
                 return response.content.trimmingCharacters(in: .whitespacesAndNewlines)
             }
         } catch {
-            NSLog("Due: note AI call failed: \(error.localizedDescription)")
+            // Full error, not just localizedDescription: FoundationModels errors carry the
+            // useful detail (guardrail case, context size, assets) in the enum payload.
+            NSLog("Due: note AI call failed: \(String(describing: error))")
             return nil
         }
     }
@@ -225,15 +263,16 @@ extension NoteAI {
         }
     }
 
-    /// Refusals come back AS the string with permissive guardrails; length-gate the rest.
-    private static func plausible(output: String, input: String) -> Bool {
+    /// Refusals come back AS the string with permissive guardrails; that (and empty) is the
+    /// only junk worth rejecting. Length ratios are NOT checked: a valid outline can be a
+    /// fifth of the input and a valid fix-up double it.
+    private static func usable(_ output: String) -> Bool {
         guard !output.isEmpty else { return false }
         let lowered = output.lowercased()
         for refusal in ["i can't", "i cannot", "i'm sorry", "i am sorry", "i'm unable"] where lowered.hasPrefix(refusal) {
             return false
         }
-        let ratio = Double(output.count) / Double(max(input.count, 1))
-        return ratio > 0.3 && ratio < 3.5
+        return true
     }
 }
 

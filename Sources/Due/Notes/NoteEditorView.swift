@@ -11,11 +11,15 @@ struct NoteEditorView: View {
     @Environment(LectureEngine.self) private var engine
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    enum ViewMode { case write, read }
+
     @State private var ai = NoteAI()
     @State private var aiError: String?
     @State private var showNewCourseField = false
     @State private var newCourseText = ""
+    @State private var mode: ViewMode = .write
     @FocusState private var newCourseFocused: Bool
+    @FocusState private var bodyFocused: Bool
 
     private var note: Note? { notes.note(noteID) }
 
@@ -35,20 +39,57 @@ struct NoteEditorView: View {
                 RecorderBar()
             }
             Divider()
-            TextEditor(text: bodyBinding)
-                .font(.system(size: 14))
-                .lineSpacing(4)
-                .scrollContentBackground(.hidden)
-                .padding(.horizontal, Theme.notesEditorInset - 5)
-                .padding(.vertical, 8)
+            if mode == .read {
+                NoteReadingView(text: note.body, accent: accent(note)) {
+                    switchToWrite()
+                }
+            } else {
+                TextEditor(text: bodyBinding)
+                    .font(.system(size: 14))
+                    .lineSpacing(4)
+                    .scrollContentBackground(.hidden)
+                    .padding(.horizontal, Theme.notesEditorInset - 5)
+                    .padding(.vertical, 8)
+                    .focused($bodyFocused)
+            }
             Divider()
             statusBar(note)
         }
         .toolbar {
+            ToolbarItem(placement: .automatic) { modePicker }
             ToolbarItem(placement: .automatic) { recordButton(note) }
             ToolbarItem(placement: .automatic) { aiMenu(note) }
         }
+        // Notes with content open formatted; empty notes open ready to type.
+        .onAppear { mode = note.body.isEmpty ? .write : .read }
+        // The toolbar picker and tap-to-edit both land ready to type.
+        .onChange(of: mode) { _, newMode in
+            if newMode == .write { bodyFocused = true }
+        }
         .animation(reduceMotion ? nil : .easeOut(duration: Theme.animationBase), value: engine.isCapturing(note.id))
+    }
+
+    private func accent(_ note: Note) -> Color {
+        guard let course = note.course else { return .accentColor }
+        return Theme.color(appState.color(forCourse: course))
+    }
+
+    private func switchToWrite() {
+        mode = .write
+        bodyFocused = true
+    }
+
+    private var modePicker: some View {
+        Picker("View", selection: $mode) {
+            Image(systemName: "pencil").tag(ViewMode.write)
+                .help("Write")
+                .accessibilityLabel("Write")
+            Image(systemName: "doc.richtext").tag(ViewMode.read)
+                .help("Formatted view")
+                .accessibilityLabel("Formatted view")
+        }
+        .pickerStyle(.segmented)
+        .help("Switch between writing and the formatted view")
     }
 
     // MARK: - Header
@@ -255,8 +296,10 @@ struct NoteEditorView: View {
                 case .cleanUp, .outline:
                     notes.applyAIEdit(noteID, body: result)
                 case .summarize:
-                    notes.applyAIEdit(noteID, body: "## Summary\n\n\(result)\n\n\(original)")
+                    notes.applyAIEdit(noteID, body: "## Summary\n\n\(result)\n\n---\n\n\(original)")
                 }
+                // Show the result formatted; that's the point of the action.
+                mode = .read
             } catch {
                 aiError = error.localizedDescription
             }

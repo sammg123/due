@@ -60,12 +60,19 @@ public struct Note: Identifiable, Codable, Equatable, Hashable, Sendable {
         return String(collapsed.prefix(160))
     }
 
-    /// Drops leading `#` heading markers and `-` bullets; the text itself is kept.
+    /// Drops structural markers (`#` headings, `-` bullets, `>` callouts, `**`/`` ` `` inline,
+    /// divider and table-separator lines); the text itself is kept.
     private static func strippingMarkdownMarkers(_ line: String) -> String {
         var trimmed = Substring(line.trimmingCharacters(in: .whitespaces))
+        // Divider / table-separator lines carry no preview-worthy text at all.
+        if !trimmed.isEmpty, trimmed.allSatisfy({ "-|: ".contains($0) }) { return "" }
         while trimmed.first == "#" { trimmed = trimmed.dropFirst() }
-        if trimmed.first == "-" { trimmed = trimmed.dropFirst() }
-        return String(trimmed).trimmingCharacters(in: .whitespaces)
+        if trimmed.first == "-" || trimmed.first == ">" { trimmed = trimmed.dropFirst() }
+        return String(trimmed)
+            .replacingOccurrences(of: "**", with: "")
+            .replacingOccurrences(of: "`", with: "")
+            .replacingOccurrences(of: "|", with: " ")
+            .trimmingCharacters(in: .whitespaces)
     }
 
     public var wordCount: Int {

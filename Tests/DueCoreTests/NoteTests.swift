@@ -33,6 +33,11 @@ final class NoteTests: XCTestCase {
         XCTAssertEqual(note.preview, "Summary first point second point")
     }
 
+    func testPreviewStripsRichMarkersAndSkipsSeparatorLines() {
+        let note = Note(title: "T", body: "> **IQR** is `Q3-Q1`\n---\n|---|---|")
+        XCTAssertEqual(note.preview, "IQR is Q3-Q1")
+    }
+
     func testTolerantDecodingFillsDefaults() throws {
         let json = """
         {"id":"\(UUID().uuidString)","title":"T","body":"B","createdAt":"2026-08-30T10:00:00Z","updatedAt":"2026-08-30T10:00:00Z"}

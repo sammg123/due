@@ -264,8 +264,17 @@ final class NoteAI {
     private func rewrite(_ chunks: [String], engine: NoteAIEngine, instructions: String, fallbackToOriginal: Bool) async throws -> String {
         var pieces: [String] = []
         for chunk in chunks {
+            // A content-free chunk (bare heading, divider) never reaches the model: given
+            // nothing to work from, models invent a plausible lecture to fill the space.
+            guard NoteGrounding.hasSubstance(chunk) else {
+                pieces.append(chunk)
+                continue
+            }
+            // And whatever comes back must retain the chunk's own vocabulary, or it's
+            // fabrication, not a rewrite.
             if let output = await respond(engine: engine, instructions: instructions, prompt: chunk),
-               Self.usable(output) {
+               Self.usable(output),
+               NoteGrounding.sharesVocabulary(output: output, input: chunk) {
                 pieces.append(output)
             } else if fallbackToOriginal {
                 pieces.append(chunk)
@@ -278,7 +287,7 @@ final class NoteAI {
 
     private func summarize(_ chunks: [String], engine: NoteAIEngine) async throws -> String {
         var partials: [String] = []
-        for chunk in chunks {
+        for chunk in chunks where NoteGrounding.hasSubstance(chunk) {
             if let output = await respond(engine: engine, instructions: Self.summarizeText, prompt: chunk),
                Self.usable(output) {
                 partials.append(output)
@@ -341,6 +350,9 @@ final class NoteAI {
         compute fences -> flag outliers. Never make this a heading.
         - '---' alone on a line to separate major sections.
         Never use LaTeX or $...$ math; write formulas in `code` backticks.
+        Work ONLY from what the notes contain. NEVER invent topics, facts, examples, or
+        sections that are not in the notes; if there is no real content to work with,
+        reply with the notes exactly as given.
         Reply with ONLY the formatted notes, no preamble.
         """
 

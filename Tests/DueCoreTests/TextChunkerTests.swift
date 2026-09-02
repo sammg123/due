@@ -35,6 +35,18 @@ final class TextChunkerTests: XCTestCase {
         XCTAssertEqual(rejoined.filter { !$0.isWhitespace }, paragraph.filter { !$0.isWhitespace })
     }
 
+    func testHeadingBeforeOversizedParagraphRidesWithTheContent() {
+        // The bug that fabricated a lecture: a transcript is one huge paragraph under a
+        // heading, and the heading must never become a content-free chunk of its own.
+        let paragraph = String(repeating: "Words in a real sentence here. ", count: 20)
+        let chunks = TextChunker.chunks("## Lecture · Sep 2\n\n" + paragraph, limit: 200)
+        XCTAssertTrue(chunks[0].hasPrefix("## Lecture · Sep 2"))
+        XCTAssertGreaterThan(chunks[0].count, 60, "heading chunk carries real content")
+        for chunk in chunks {
+            XCTAssertLessThanOrEqual(chunk.count, 200)
+        }
+    }
+
     func testHardSplitWhenNoSentenceBoundaryExists() {
         let blob = String(repeating: "x", count: 250)
         let chunks = TextChunker.chunks(blob, limit: 100)

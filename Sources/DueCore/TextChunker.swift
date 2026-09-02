@@ -12,8 +12,12 @@ public enum TextChunker {
         var current = ""
         for paragraph in trimmed.components(separatedBy: "\n\n") {
             if paragraph.count > limit {
-                flush(&current, into: &chunks)
-                chunks.append(contentsOf: split(oversized: paragraph, limit: limit))
+                // Carry the pending buffer (typically a heading over a transcript) into the
+                // split: a content-free fragment as its own chunk gives a model nothing to
+                // anchor on, and models fill that vacuum with invented content.
+                let prefixed = current.isEmpty ? paragraph : current + "\n\n" + paragraph
+                current = ""
+                chunks.append(contentsOf: split(oversized: prefixed, limit: limit))
                 continue
             }
             let joined = current.isEmpty ? paragraph : current + "\n\n" + paragraph

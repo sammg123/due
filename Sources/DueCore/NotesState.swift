@@ -15,6 +15,10 @@ public final class NotesState {
     private var pendingSaves: [UUID: Note] = [:]
     /// Session-only pre-AI-edit bodies, keyed by note. Never persisted.
     private var aiBackups: [UUID: String] = [:]
+    /// Session-only pre-AI-edit drawing scenes, keyed by drawing. Never persisted.
+    private var drawingAIBackups: [UUID: Drawing] = [:]
+    /// Loaded drawings, filled lazily as blocks render.
+    private var drawingsCache: [UUID: Drawing] = [:]
     private var saveTask: Task<Void, Never>?
 
     /// Keystroke-to-disk delay. Short enough that a crash loses at most a moment of typing.
@@ -114,6 +118,14 @@ public final class NotesState {
     }
 
     public func deleteNote(_ id: UUID) {
+        // Evict the note's drawings from memory too, or an in-flight AI edit resolving
+        // after the delete would find them in the cache and resurrect their files.
+        for fileName in note(id)?.drawingFiles ?? [] {
+            if let drawingID = UUID(uuidString: (fileName as NSString).deletingPathExtension) {
+                drawingsCache.removeValue(forKey: drawingID)
+                drawingAIBackups.removeValue(forKey: drawingID)
+            }
+        }
         notes = notes.filter { $0.id != id }
         pendingSaves.removeValue(forKey: id)
         aiBackups.removeValue(forKey: id)
@@ -146,6 +158,95 @@ public final class NotesState {
     public func recordAudioFile(_ id: UUID, fileName: String, seconds: Int, at date: Date = Date()) {
         guard let existing = note(id) else { return }
         apply(existing.updating(addingAudioFile: fileName, seconds: seconds, at: date), debounced: false)
+    }
+
+    // MARK: - Drawings
+
+    public func drawing(_ id: UUID) -> Drawing? {
+        if let cached = drawingsCache[id] { return cached }
+        guard let store, let loaded = try? store.loadDrawing(id: id) else { return nil }
+        drawingsCache[id] = loaded
+        return loaded
+    }
+
+    /// The body line that places a drawing inside a note.
+    public static func drawingMarker(_ id: UUID) -> String { "[drawing: \(id.uuidString)]" }
+
+    /// Creates an empty drawing, registers it on the note, and appends its marker to the
+    /// body. Everything persists immediately.
+    @discardableResult
+    public func attachDrawing(to noteID: UUID, at date: Date = Date()) -> Drawing? {
+        guard let existing = note(noteID) else { return nil }
+        let drawing = Drawing(createdAt: date, updatedAt: date)
+        drawingsCache[drawing.id] = drawing
+        persistDrawing(drawing)
+        let base = existing.body.isEmpty ? "" : existing.body + "\n\n"
+        var next = existing.updating(body: base + Self.drawingMarker(drawing.id) + "\n", at: date)
+        next = next.updating(addingDrawingFile: NotesStore.drawingFileName(for: drawing.id), at: date)
+        apply(next, debounced: false)
+        return drawing
+    }
+
+    /// Saves a drawing edit and bumps the note so it sorts as recently edited.
+    /// A drawing whose note is gone is never written: that would orphan a file on disk
+    /// that no cleanup path can reach.
+    public func updateDrawing(_ drawing: Drawing, for noteID: UUID, at date: Date = Date()) {
+        guard let existing = note(noteID) else {
+            drawingsCache.removeValue(forKey: drawing.id)
+            drawingAIBackups.removeValue(forKey: drawing.id)
+            return
+        }
+        var copy = drawing
+        copy.updatedAt = date
+        drawingsCache[copy.id] = copy
+        persistDrawing(copy)
+        apply(existing.updating(body: existing.body, at: date), debounced: false)
+    }
+
+    /// Removes the drawing's file, its registration, and its marker line(s) from the body.
+    public func deleteDrawing(_ id: UUID, from noteID: UUID, at date: Date = Date()) {
+        drawingsCache.removeValue(forKey: id)
+        drawingAIBackups.removeValue(forKey: id)
+        if let store {
+            try? store.deleteDrawing(id: id)
+        }
+        guard let existing = note(noteID) else { return }
+        let marker = Self.drawingMarker(id)
+        let body = existing.body
+            .components(separatedBy: .newlines)
+            .filter { $0.trimmingCharacters(in: .whitespaces).lowercased() != marker.lowercased() }
+            .joined(separator: "\n")
+        var next = existing.updating(body: body, at: date)
+        next = next.updating(removingDrawingFile: NotesStore.drawingFileName(for: id), at: date)
+        apply(next, debounced: false)
+    }
+
+    /// Replaces a drawing's scene from an AI edit, keeping the previous scene for revert.
+    public func applyAIDrawing(_ id: UUID, elements: [DrawingElement], for noteID: UUID, at date: Date = Date()) {
+        guard let existing = drawing(id) else { return }
+        drawingAIBackups[id] = existing
+        updateDrawing(existing.updating(elements: elements, at: date), for: noteID, at: date)
+    }
+
+    public func drawingAIBackup(_ id: UUID) -> Drawing? { drawingAIBackups[id] }
+
+    public func revertAIDrawing(_ id: UUID, for noteID: UUID, at date: Date = Date()) {
+        guard let backup = drawingAIBackups.removeValue(forKey: id) else { return }
+        updateDrawing(backup, for: noteID, at: date)
+    }
+
+    /// A manual edit to the drawing invalidates the AI revert, same rule as note bodies.
+    public func clearDrawingAIBackup(_ id: UUID) {
+        drawingAIBackups.removeValue(forKey: id)
+    }
+
+    private func persistDrawing(_ drawing: Drawing) {
+        guard let store else { return }
+        do {
+            try store.saveDrawing(drawing)
+        } catch {
+            lastError = "Could not save drawing: \(error.localizedDescription)"
+        }
     }
 
     /// Writes every debounced edit now. Call on window close / app quit.

@@ -13,12 +13,17 @@ struct NoteEditorView: View {
 
     enum ViewMode { case write, read }
 
+    struct DrawingSheetItem: Identifiable {
+        let id: UUID
+    }
+
     @State private var ai = NoteAI()
     @State private var aiError: String?
     @State private var showNewCourseField = false
     @State private var newCourseText = ""
     @State private var aiPrompt = ""
     @State private var mode: ViewMode = .write
+    @State private var editingDrawing: DrawingSheetItem?
     @FocusState private var newCourseFocused: Bool
     @FocusState private var bodyFocused: Bool
     @FocusState private var aiPromptFocused: Bool
@@ -42,9 +47,12 @@ struct NoteEditorView: View {
             }
             Divider()
             if mode == .read {
-                NoteReadingView(text: note.body, accent: accent(note)) {
-                    switchToWrite()
-                }
+                NoteReadingView(
+                    text: note.body,
+                    accent: accent(note),
+                    onEdit: { switchToWrite() },
+                    onEditDrawing: { editingDrawing = DrawingSheetItem(id: $0) }
+                )
             } else {
                 TextEditor(text: bodyBinding)
                     .font(.system(size: 14))
@@ -60,8 +68,14 @@ struct NoteEditorView: View {
         }
         .toolbar {
             ToolbarItem(placement: .automatic) { modePicker }
+            ToolbarItem(placement: .automatic) { insertDrawingButton }
             ToolbarItem(placement: .automatic) { recordButton(note) }
             ToolbarItem(placement: .automatic) { aiMenu(note) }
+        }
+        .sheet(item: $editingDrawing) { item in
+            DrawingCanvasView(drawingID: item.id, noteID: noteID)
+                .environment(appState)
+                .environment(notes)
         }
         // Notes with content open formatted; empty notes open ready to type.
         .onAppear { mode = note.body.isEmpty ? .write : .read }
@@ -81,6 +95,18 @@ struct NoteEditorView: View {
     private func switchToWrite() {
         mode = .write
         bodyFocused = true
+    }
+
+    private var insertDrawingButton: some View {
+        Button {
+            if let drawing = notes.attachDrawing(to: noteID) {
+                editingDrawing = DrawingSheetItem(id: drawing.id)
+            }
+        } label: {
+            Image(systemName: "pencil.and.outline")
+        }
+        .help("Insert a drawing")
+        .accessibilityLabel("Insert drawing")
     }
 
     private var modePicker: some View {
@@ -213,7 +239,7 @@ struct NoteEditorView: View {
     }
 
     private func openRecording(_ file: String) {
-        guard let dir = notes.audioDirectory, NotesStore.isSafeAudioFileName(file) else { return }
+        guard let dir = notes.audioDirectory, NotesStore.isSafeRelativeFileName(file) else { return }
         NSWorkspace.shared.open(dir.appendingPathComponent(file))
     }
 

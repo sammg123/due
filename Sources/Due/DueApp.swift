@@ -45,6 +45,24 @@ struct DueApp: App {
                 .environment(state)
         }
         .windowResizability(.contentSize)
+
+        // `Due --preview-canvas <drawing-uuid>`: the drawing editor in a window, for
+        // screenshots and dev. The drawing must exist in the notes store.
+        Window("Canvas Preview", id: "canvas-preview") {
+            if let idx = CommandLine.arguments.firstIndex(of: "--preview-canvas"),
+               CommandLine.arguments.count > idx + 1,
+               let drawingID = UUID(uuidString: CommandLine.arguments[idx + 1]),
+               let noteID = notesState.notes.first(where: {
+                   $0.drawingFiles.contains(NotesStore.drawingFileName(for: drawingID))
+               })?.id {
+                DrawingCanvasView(drawingID: drawingID, noteID: noteID)
+                    .environment(state)
+                    .environment(notesState)
+            } else {
+                Text("Pass --preview-canvas <drawing-uuid>").padding()
+            }
+        }
+        .windowResizability(.contentSize)
     }
 }
 
@@ -78,6 +96,10 @@ struct MenuBarLabel: View {
                 openWindow(id: "notes")
                 NSApp.activate(ignoringOtherApps: true)
             }
+            if CommandLine.arguments.contains("--preview-canvas") {
+                openWindow(id: "canvas-preview")
+                NSApp.activate(ignoringOtherApps: true)
+            }
             // `Due --ai-test <cleanUp|summarize|outline> <file>` or
             // `Due --ai-test custom <file> <instruction>`: run a note AI action inside
             // the real app process and exit. Prints result or error to stdout for dev use.
@@ -93,6 +115,13 @@ struct MenuBarLabel: View {
                         let out: String
                         if kind == "custom", let text, let instruction {
                             out = try await ai.runCustom(instruction, on: text, modelSetting: modelSetting)
+                        } else if kind == "draw", let text, let instruction {
+                            let scene = try await ai.runDrawing(instruction, elements: [], noteContext: text, modelSetting: modelSetting)
+                            out = DrawingCodec.encodeForModel(scene)
+                        } else if kind == "vision", args.count > idx + 2,
+                                  let png = try? Data(contentsOf: URL(fileURLWithPath: args[idx + 2])) {
+                            let scene = try await ai.vectorizeSketch(png: png, noteContext: "")
+                            out = DrawingCodec.encodeForModel(scene)
                         } else if let action = NoteAIAction(rawValue: kind), let text {
                             out = try await ai.run(action, on: text, modelSetting: modelSetting)
                         } else {

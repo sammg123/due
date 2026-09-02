@@ -26,6 +26,15 @@ final class OllamaModelsTests: XCTestCase {
         XCTAssertNil(OllamaModels.preferred(from: ["embeddinggemma:latest"]))
     }
 
+    func testVisionPrefersMultimodalFamiliesOnly() {
+        XCTAssertEqual(
+            OllamaModels.preferredVision(from: ["qwen3.6:35b-a3b-nvfp4", "gemma3:27b", "gemma4:e4b-mlx"]),
+            "gemma4:e4b-mlx"
+        )
+        XCTAssertNil(OllamaModels.preferredVision(from: ["qwen3.6:35b-a3b-nvfp4", "muse-glimmer:30b-mlx"]),
+                     "text-only models never get images")
+    }
+
     func testSettingsRoundTripsNotesAIModel() throws {
         var settings = DueSettings()
         XCTAssertEqual(settings.notesAIModel, "auto")

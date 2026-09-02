@@ -164,8 +164,20 @@ installed model (configurable under Settings > Notes AI, loopback only, nothing
 leaves the Mac); otherwise it uses Apple Intelligence (macOS 26). Long transcripts
 are processed in chunks.
 
+**Drawings.** The pencil button in the editor (or clicking a drawing in the formatted
+view) opens a canvas: freehand pen with shape assist (rough strokes snap to clean
+lines, boxes, and ellipses; undo keeps the original ink), boxes, ellipses, arrows,
+text, select/move, erase, full undo/redo, and PNG export. Drawings are structured
+vector scenes, not pixels, so the AI can work on them: the canvas has its own ask-AI
+bar ("flowchart of the outlier procedure", "graph e^(-x^2/2)", "label the boxes"), a
+Suggest button that adds what the note implies is missing, and, when a vision model
+is installed in Ollama (gemma3 works), a Redraw sketch button that turns rough ink
+into clean shapes. Function plots use a real expression evaluator (sin, cos, exp,
+sqrt, pi, e...), and scatter elements chart data points on auto-scaled axes.
+Drawings render inline in the note wherever their `[drawing: id]` line sits.
+
 Notes are one JSON file each under `~/Library/Application Support/Due/Notes/`, with
-recordings in `Notes/Audio/`.
+recordings in `Notes/Audio/` and drawings in `Notes/Drawings/`.
 
 ## Smart parsing
 
@@ -179,6 +191,9 @@ swift build
 .build/debug/Due --preview            # popover in a normal window, for screenshots
 .build/debug/Due --preview-settings   # settings pane in a window
 .build/debug/Due --notes              # straight into the notes window
+.build/debug/Due --preview-canvas <drawing-uuid>   # the drawing editor in a window
+.build/debug/Due --ai-test outline <file>          # run a note AI action headless
+.build/debug/Due --ai-test draw <file> "<prompt>"  # generate a drawing scene headless
 ```
 
 `DUE_DATA_PATH=/path/to/file.json` points the app at a different data file and

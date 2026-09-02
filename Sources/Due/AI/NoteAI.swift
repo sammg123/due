@@ -42,6 +42,7 @@ enum NoteAIError: LocalizedError {
     case emptyNote
     case noUsableOutput
     case noteTooLong
+    case noVisionModel
 
     var errorDescription: String? {
         switch self {
@@ -49,6 +50,7 @@ enum NoteAIError: LocalizedError {
         case .emptyNote: return "Nothing to work with yet. Write or record something first"
         case .noUsableOutput: return "The model didn't return usable text; the note is unchanged"
         case .noteTooLong: return "This note is too long for instruction edits. Run Fix up or Outline first"
+        case .noVisionModel: return "Redrawing a sketch needs a vision model in Ollama (gemma3 works)"
         }
     }
 }
@@ -187,6 +189,72 @@ final class NoteAI {
         return output
     }
 
+    // MARK: - Drawings
+
+    /// Generates (empty scene) or edits a drawing from an instruction, with the note body
+    /// as context so "graph the fences" knows what the fences are. One model call; the
+    /// scene is validated, clamped, and de-overlapped before it comes back.
+    func runDrawing(_ instruction: String, elements: [DrawingElement], noteContext: String, modelSetting: String) async throws -> [DrawingElement] {
+        isRunning = true
+        runningLabel = "Drawing"
+        defer {
+            isRunning = false
+            runningLabel = nil
+        }
+        let engine = try await Self.resolveEngine(setting: modelSetting)
+        engineName = engine.shortName
+        let prompt = Self.drawingPrompt(instruction: instruction, elements: elements, noteContext: noteContext)
+        guard let output = await respond(engine: engine, instructions: Self.drawingText, prompt: prompt),
+              let scene = DrawingCodec.decodeScene(output)
+        else { throw NoteAIError.noUsableOutput }
+        return DrawingGeometry.resolveOverlaps(scene)
+    }
+
+    /// Interprets a raw sketch (rendered to PNG) into a clean structured scene via a local
+    /// vision model. Ollama-only: Apple's on-device model takes no images.
+    func vectorizeSketch(png: Data, noteContext: String) async throws -> [DrawingElement] {
+        isRunning = true
+        runningLabel = "Redrawing"
+        defer {
+            isRunning = false
+            runningLabel = nil
+        }
+        guard let installed = await OllamaClient.installedModels() else { throw NoteAIError.noVisionModel }
+        let candidates = OllamaModels.visionCandidates(from: installed)
+        guard !candidates.isEmpty else { throw NoteAIError.noVisionModel }
+        let prompt = Self.drawingPrompt(
+            instruction: "The image is the student's hand-drawn sketch. Recreate it as a clean scene: rough boxes become rects, rough circles become ellipses, arrows become arrows, handwriting becomes text or labels, hand-drawn curves over axes become plot elements when you can tell the function. Preserve the sketch's layout.",
+            elements: [],
+            noteContext: noteContext
+        )
+        // A specific build can lack image support even when its family has it, so walk the
+        // ranked candidates until one takes the image.
+        for visionModel in candidates.prefix(3) {
+            engineName = String(visionModel.split(separator: ":").first ?? Substring(visionModel))
+            do {
+                let output = try await OllamaClient.chat(model: visionModel, system: Self.drawingText, prompt: prompt, images: [png])
+                guard let scene = DrawingCodec.decodeScene(output), !scene.isEmpty else { throw NoteAIError.noUsableOutput }
+                return DrawingGeometry.resolveOverlaps(scene)
+            } catch {
+                NSLog("Due: sketch vectorize failed (\(visionModel)): \(String(describing: error))")
+                continue
+            }
+        }
+        throw NoteAIError.noUsableOutput
+    }
+
+    private static func drawingPrompt(instruction: String, elements: [DrawingElement], noteContext: String) -> String {
+        let context = noteContext.trimmingCharacters(in: .whitespacesAndNewlines)
+        return """
+        Note text for context:
+        \(context.isEmpty ? "(none)" : String(context.prefix(2_500)))
+
+        Current scene: \(DrawingCodec.encodeForModel(elements))
+
+        Instruction: \(instruction)
+        """
+    }
+
     // MARK: - Chunk loops
 
     /// One model call per chunk. `fallbackToOriginal` keeps a chunk untouched when the model
@@ -322,6 +390,27 @@ final class NoteAI {
         otherwise, keep every existing fact.
 
         \(formatSpec)
+        """
+
+    private static let drawingText = """
+        You create and edit simple diagrams for a student's class notes, as a JSON scene on
+        a 1000 x 750 canvas (x grows right, y grows down). Your reply REPLACES the whole
+        scene: reply with ONLY the full updated JSON {"elements":[...]}. Keep existing
+        elements unless the instruction says to change them. Element kinds:
+        - {"kind":"rect","x":60,"y":80,"w":200,"h":90,"text":"label","color":"blue"}
+        - {"kind":"ellipse", same fields as rect}
+        - {"kind":"arrow","from":{"x":260,"y":125},"to":{"x":520,"y":220},"text":"optional","color":"gray"}
+        - {"kind":"text","x":40,"y":40,"text":"annotation","size":16,"color":"gray"}
+        - a graph of y=f(x): {"kind":"plot","expression":"e^(-x^2/2)","xMin":-3,"xMax":3,"color":"blue"}
+          expression supports + - * / ^, sin cos tan exp ln log sqrt abs, pi, e, x. NO LaTeX.
+        - data points: {"kind":"scatter","points":[{"x":1,"y":2.5}],"color":"pink"}
+          Plots and scatters share one auto-scaled pair of axes; other kinds use canvas coordinates.
+        Colors: red orange yellow green mint teal cyan blue indigo purple pink brown gray.
+        Layout rules: boxes at least 140 wide and 70 tall so labels fit, 40+ of space between
+        boxes, everything inside the canvas, arrows connect box edges, label the key parts.
+
+        Example: "flowchart of photosynthesis inputs" ->
+        {"elements":[{"kind":"rect","x":60,"y":80,"w":200,"h":90,"text":"sunlight","color":"yellow"},{"kind":"rect","x":60,"y":320,"w":200,"h":90,"text":"water","color":"blue"},{"kind":"rect","x":540,"y":200,"w":220,"h":90,"text":"glucose","color":"green"},{"kind":"arrow","from":{"x":260,"y":125},"to":{"x":540,"y":230},"color":"gray"},{"kind":"arrow","from":{"x":260,"y":365},"to":{"x":540,"y":260},"color":"gray"}]}
         """
 }
 

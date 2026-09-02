@@ -9,6 +9,7 @@ public struct NotesStore: Sendable {
     public init(directory: URL) { self.directory = directory }
 
     public var audioDirectory: URL { directory.appendingPathComponent("Audio", isDirectory: true) }
+    public var drawingsDirectory: URL { directory.appendingPathComponent("Drawings", isDirectory: true) }
 
     /// Honors `DUE_NOTES_PATH` (used by previews and tests) before falling back to Application Support.
     public static func defaultDirectory() -> URL {
@@ -51,22 +52,46 @@ public struct NotesStore: Sendable {
         try bytes.write(to: url(for: note.id), options: .atomic)
     }
 
-    /// Removes the note file and any recordings it listed.
+    /// Removes the note file and any recordings and drawings it listed.
     public func delete(_ id: UUID) throws {
         let noteURL = url(for: id)
         if let bytes = try? Data(contentsOf: noteURL),
            let note = try? Self.decoder.decode(Note.self, from: bytes) {
-            for fileName in note.audioFiles where Self.isSafeAudioFileName(fileName) {
+            for fileName in note.audioFiles where Self.isSafeRelativeFileName(fileName) {
                 try? FileManager.default.removeItem(at: audioDirectory.appendingPathComponent(fileName))
+            }
+            for fileName in note.drawingFiles where Self.isSafeRelativeFileName(fileName) {
+                try? FileManager.default.removeItem(at: drawingsDirectory.appendingPathComponent(fileName))
             }
         }
         guard FileManager.default.fileExists(atPath: noteURL.path) else { return }
         try FileManager.default.removeItem(at: noteURL)
     }
 
+    // MARK: - Drawings
+
+    public static func drawingFileName(for id: UUID) -> String { "\(id.uuidString).json" }
+
+    public func loadDrawing(id: UUID) throws -> Drawing {
+        let bytes = try Data(contentsOf: drawingsDirectory.appendingPathComponent(Self.drawingFileName(for: id)))
+        return try Self.decoder.decode(Drawing.self, from: bytes)
+    }
+
+    public func saveDrawing(_ drawing: Drawing) throws {
+        try FileManager.default.createDirectory(at: drawingsDirectory, withIntermediateDirectories: true)
+        let bytes = try Self.encoder.encode(drawing)
+        try bytes.write(to: drawingsDirectory.appendingPathComponent(Self.drawingFileName(for: drawing.id)), options: .atomic)
+    }
+
+    public func deleteDrawing(id: UUID) throws {
+        let url = drawingsDirectory.appendingPathComponent(Self.drawingFileName(for: id))
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        try FileManager.default.removeItem(at: url)
+    }
+
     /// Audio file names come back off disk; a tampered note file must not be able to point a
     /// delete or an open outside the Audio directory.
-    public static func isSafeAudioFileName(_ name: String) -> Bool {
+    public static func isSafeRelativeFileName(_ name: String) -> Bool {
         !name.isEmpty && !name.contains("/") && !name.contains("\\") && name != "." && name != ".."
     }
 

@@ -70,11 +70,11 @@ final class NotesStoreTests: XCTestCase {
     }
 
     func testUnsafeAudioFileNamesAreRejected() {
-        XCTAssertTrue(NotesStore.isSafeAudioFileName("abc-1.m4a"))
-        XCTAssertFalse(NotesStore.isSafeAudioFileName("../outside.m4a"))
-        XCTAssertFalse(NotesStore.isSafeAudioFileName("a/b.m4a"))
-        XCTAssertFalse(NotesStore.isSafeAudioFileName(".."))
-        XCTAssertFalse(NotesStore.isSafeAudioFileName(""))
+        XCTAssertTrue(NotesStore.isSafeRelativeFileName("abc-1.m4a"))
+        XCTAssertFalse(NotesStore.isSafeRelativeFileName("../outside.m4a"))
+        XCTAssertFalse(NotesStore.isSafeRelativeFileName("a/b.m4a"))
+        XCTAssertFalse(NotesStore.isSafeRelativeFileName(".."))
+        XCTAssertFalse(NotesStore.isSafeRelativeFileName(""))
     }
 
     func testDeleteIgnoresTraversalAudioNames() throws {

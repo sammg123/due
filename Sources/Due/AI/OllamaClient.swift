@@ -31,7 +31,8 @@ enum OllamaClient {
 
     /// One non-streaming chat completion. Thinking is disabled and any leaked reasoning
     /// stripped: some models narrate their chain of thought into the answer otherwise.
-    static func chat(model: String, system: String, prompt: String) async throws -> String {
+    /// `images` (PNG data) go to multimodal models only; text models would ignore them.
+    static func chat(model: String, system: String, prompt: String, images: [Data] = []) async throws -> String {
         var request = URLRequest(url: baseURL.appendingPathComponent("api/chat"), timeoutInterval: chatTimeout)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -39,7 +40,7 @@ enum OllamaClient {
             model: model,
             messages: [
                 Message(role: "system", content: system),
-                Message(role: "user", content: prompt),
+                Message(role: "user", content: prompt, images: images.isEmpty ? nil : images.map { $0.base64EncodedString() }),
             ]
         ))
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -77,6 +78,13 @@ enum OllamaClient {
     private struct Message: Codable {
         let role: String
         let content: String
+        var images: [String]?
+
+        init(role: String, content: String, images: [String]? = nil) {
+            self.role = role
+            self.content = content
+            self.images = images
+        }
     }
 
     private struct ChatRequest: Encodable {

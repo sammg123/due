@@ -14,4 +14,22 @@ public enum OllamaModels {
         }
         return candidates.first
     }
+
+    /// Families known to accept images. No generic fallback: most models are text-only and
+    /// would silently ignore the image, so nil means "no vision available".
+    static let visionRanking = ["gemma4", "gemma3", "qwen3-vl", "qwen2.5vl", "llava", "llama3.2-vision", "minicpm-v"]
+
+    public static func preferredVision(from installed: [String]) -> String? {
+        visionCandidates(from: installed).first
+    }
+
+    /// All vision-family matches in preference order. Callers try them in turn: a specific
+    /// build can lack image support even when its family has it (measured: a gemma4 mlx
+    /// build rejects images while gemma3 accepts them).
+    public static func visionCandidates(from installed: [String]) -> [String] {
+        let candidates = installed.filter { !$0.localizedCaseInsensitiveContains("embed") }
+        return visionRanking.flatMap { family in
+            candidates.filter { $0.hasPrefix(family) }
+        }
+    }
 }

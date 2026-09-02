@@ -5,9 +5,11 @@ import DueCore
 /// tables, and `flow:` step diagrams, tinted with the note's course color. Clicking anywhere
 /// hands back to the editor.
 struct NoteReadingView: View {
+    @Environment(NotesState.self) private var notes
     let text: String
     let accent: Color
     let onEdit: () -> Void
+    let onEditDrawing: (UUID) -> Void
 
     /// Parsed once per body change, not per render pass: any keystroke elsewhere (the title
     /// field, say) re-renders this view, and re-parsing a lecture-length body each time is
@@ -89,6 +91,17 @@ struct NoteReadingView: View {
             table(header: header, rows: rows)
         case .flow(let steps):
             flow(steps)
+        case .drawing(let id):
+            if let drawing = notes.drawing(id) {
+                DrawingBlockView(drawing: drawing)
+                    .onTapGesture { onEditDrawing(id) }
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityHint("Click to edit the drawing")
+            } else {
+                Text("Missing drawing")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
         }
     }
 

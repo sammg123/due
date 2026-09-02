@@ -23,6 +23,7 @@ public enum NoteBlock: Equatable, Sendable {
     case divider
     case table(header: [String], rows: [[String]])
     case flow(steps: [String])
+    case drawing(id: UUID)
 }
 
 /// Parses the small markdown dialect Due's notes use (the same one the AI actions emit)
@@ -51,6 +52,8 @@ public enum NoteMarkdown {
 
             if let heading = parseHeading(line) {
                 blocks.append(heading)
+            } else if let drawingID = parseDrawingMarker(line) {
+                blocks.append(.drawing(id: drawingID))
             } else if isDivider(line) {
                 blocks.append(.divider)
             } else if line.hasPrefix("> ") {
@@ -83,6 +86,14 @@ public enum NoteMarkdown {
 
     private static func isDivider(_ line: String) -> Bool {
         line.count >= 3 && line.allSatisfy { $0 == "-" }
+    }
+
+    /// `[drawing: <uuid>]` on its own line places an attached drawing.
+    static func parseDrawingMarker(_ line: String) -> UUID? {
+        let lowered = line.lowercased()
+        guard lowered.hasPrefix("[drawing:"), line.hasSuffix("]") else { return nil }
+        let inner = line.dropFirst("[drawing:".count).dropLast().trimmingCharacters(in: .whitespaces)
+        return UUID(uuidString: inner)
     }
 
     private static func parseFlow(_ line: String) -> NoteBlock? {

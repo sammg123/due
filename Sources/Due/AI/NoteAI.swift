@@ -62,12 +62,22 @@ enum NoteAIEngine {
     case apple
     case ollama(model: String)
 
-    /// Chars per model call. Apple's model shares a 4,096-token window between prompt and
-    /// response; Ollama runs with a 16k context, so chunks can be much larger.
+    /// Chars per model call for chunked actions. Apple's model shares a 4,096-token window
+    /// between prompt and response; Ollama runs with a 32k context, so chunks can be larger.
     var chunkCharacterLimit: Int {
         switch self {
         case .apple: return 4_500
         case .ollama: return 12_000
+        }
+    }
+
+    /// Instruction edits can't chunk (a global instruction would run once per piece), so
+    /// they take the whole note in one call. ~3.5 chars/token: 40k chars is ~11.5k tokens,
+    /// comfortably inside Ollama's 32k window with room for the response.
+    var wholeNoteCharacterLimit: Int {
+        switch self {
+        case .apple: return 4_500
+        case .ollama: return 40_000
         }
     }
 
@@ -180,7 +190,7 @@ final class NoteAI {
         }
         let engine = try await Self.resolveEngine(setting: modelSetting)
         engineName = engine.shortName
-        guard body.count <= engine.chunkCharacterLimit else { throw NoteAIError.noteTooLong }
+        guard body.count <= engine.wholeNoteCharacterLimit else { throw NoteAIError.noteTooLong }
         let noteSection = body.isEmpty ? "Their note is currently empty." : "Their note:\n\(body)"
         let prompt = "Instruction from the student: \(instruction)\n\n\(noteSection)"
         guard let output = await respond(engine: engine, instructions: Self.customEditText, prompt: prompt),
@@ -343,6 +353,9 @@ final class NoteAI {
         - '- ' bullets, nested with two leading spaces per level; '1. ' for ordered steps.
         - **bold** ONLY the term a line defines (one or two bolds per line at most); \
         *italics* for emphasis; `code` for formulas and symbols.
+        - Write math with real symbols inside the backticks: √ for roots, superscript \
+        exponents like x² or 2ⁿ, · for multiplication, ≤ ≥ ≠ ±, π and σ. Plain sqrt or ^ \
+        is acceptable when a symbol doesn't exist.
         - '> ' for one-line callouts (definitions worth remembering, exam warnings).
         - A markdown table (| a | b | rows) when the notes compare things.
         - When the notes describe a step-by-step process, put it on ONE plain lowercase \

@@ -178,7 +178,8 @@ struct NoteReadingView: View {
             case .plain: Text(run.text)
             case .bold: Text(run.text).bold()
             case .italic: Text(run.text).italic()
-            case .code: Text(run.text)
+            // Formulas render with real math glyphs (√, superscripts, ·); storage stays ASCII.
+            case .code: Text(MathPrettifier.pretty(run.text))
                 .font(.system(size: 12.5, design: .monospaced))
                 .foregroundStyle(accent)
             }

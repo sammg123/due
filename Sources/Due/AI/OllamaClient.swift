@@ -95,8 +95,8 @@ enum OllamaClient {
         let options = Options()
 
         struct Options: Encodable {
-            // Ollama defaults num_ctx to 4096; lecture-sized chunks need more.
-            let num_ctx = 16_384
+            // Ollama defaults num_ctx to 4096; whole-note instruction edits need real room.
+            let num_ctx = 32_768
             let temperature = 0.0
         }
     }

@@ -44,17 +44,22 @@ struct SmallDueView: View {
 
             if let error = entry.loadError {
                 LoadErrorText(message: error)
-            } else if snapshot.isEmpty {
-                Label("All caught up", systemImage: "checkmark.circle.fill")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.green)
             } else {
                 VStack(alignment: .leading, spacing: 5) {
-                    ForEach(snapshot.rows) { row in
+                    if snapshot.isEmpty {
+                        Label("All caught up", systemImage: "checkmark.circle.fill")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.green)
+                    }
+                    // The label takes one of the three lines when nothing is open.
+                    ForEach((snapshot.rows + snapshot.doneRows).prefix(snapshot.isEmpty ? 2 : 3)) { row in
+                        let isDone = row.bucket == .done
                         HStack(spacing: 6) {
                             UrgencyBar(bucket: row.bucket, height: 12)
                             Text(row.title)
                                 .font(.system(size: 12))
+                                .strikethrough(isDone)
+                                .foregroundStyle(isDone ? .secondary : .primary)
                                 .lineLimit(1)
                         }
                     }
@@ -82,11 +87,12 @@ struct ListDueView: View {
             header
             if let error = entry.loadError {
                 LoadErrorText(message: error)
-            } else if snapshot.isEmpty {
+            } else if snapshot.isEmpty && snapshot.doneRows.isEmpty {
                 emptyState
             } else {
+                // Finished work fills whatever room open work leaves, like the popover's Done list.
                 VStack(spacing: 4) {
-                    ForEach(snapshot.rows) { DueRowView(row: $0) }
+                    ForEach(snapshot.rows + snapshot.doneRows) { DueRowView(row: $0) }
                 }
             }
             Spacer(minLength: 0)
@@ -121,29 +127,35 @@ struct ListDueView: View {
 }
 
 /// Mirrors the popover row: urgency bar, done circle, title over course, short due text.
+/// Finished rows look like the popover's Done list: filled check, struck-through and dimmed.
 private struct DueRowView: View {
     let row: WidgetRow
+    private var isDone: Bool { row.bucket == .done }
 
     var body: some View {
         HStack(spacing: 8) {
             UrgencyBar(bucket: row.bucket, height: 22)
 
+            // The same intent toggles, so clicking a finished row's check reopens it.
             Button(intent: ToggleDoneIntent(id: row.id)) {
-                Image(systemName: "circle")
+                Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 15))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Mark \(row.title) done")
+            .accessibilityLabel(isDone ? "Mark \(row.title) not done" : "Mark \(row.title) done")
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(row.title)
                     .font(.system(size: 13, weight: .medium))
+                    .strikethrough(isDone)
+                    .foregroundStyle(isDone ? .secondary : .primary)
                     .lineLimit(1)
                 if let course = row.course {
                     Text(course)
                         .font(.system(size: 10.5, weight: .semibold))
                         .foregroundStyle(PaletteStyle.color(row.courseColor))
+                        .opacity(isDone ? 0.6 : 1)
                         .lineLimit(1)
                 }
             }
@@ -153,7 +165,7 @@ private struct DueRowView: View {
             Text(row.dueText)
                 .font(.system(size: 11.5, weight: .semibold))
                 .monospacedDigit()
-                .foregroundStyle(PaletteStyle.textColor(row.bucket))
+                .foregroundStyle(isDone ? AnyShapeStyle(.secondary) : AnyShapeStyle(PaletteStyle.textColor(row.bucket)))
                 .lineLimit(1)
         }
         .frame(height: 30)

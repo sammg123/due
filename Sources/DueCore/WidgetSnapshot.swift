@@ -12,10 +12,15 @@ public struct WidgetRow: Identifiable, Equatable, Sendable {
     public let dueText: String
 }
 
-/// What the widget shows at one moment: open work in the popover's order, capped to what fits.
+/// What the widget shows at one moment: open work in the popover's order, capped to what fits,
+/// then recently finished work in whatever space is left.
 public struct WidgetSnapshot: Equatable, Sendable {
     public let date: Date
     public let rows: [WidgetRow]
+    /// Completed items, most recently finished first, in the slots open work leaves free.
+    public let doneRows: [WidgetRow]
+    /// Every completed item, shown or not.
+    public let doneCount: Int
     /// Open items that did not fit under the cap.
     public let hiddenCount: Int
     /// Overdue plus due today: the menu bar number.
@@ -43,10 +48,11 @@ public struct WidgetSnapshot: Equatable, Sendable {
     }
 
     public static func make(from data: AppData, now: Date, limit: Int, calendar: Calendar = .current) -> WidgetSnapshot {
-        let open = DueLogic.grouped(data.assignments, now: now, settings: data.settings, calendar: calendar)
-            .filter { $0.bucket != .done }
+        let groups = DueLogic.grouped(data.assignments, now: now, settings: data.settings, calendar: calendar)
+        let open = groups.filter { $0.bucket != .done }
+        let finished = groups.first { $0.bucket == .done }?.items ?? []
         let ordered = open.flatMap { group in group.items.map { (group.bucket, $0) } }
-        let shown = ordered.prefix(max(0, limit)).map { bucket, a in
+        let row = { (bucket: DueBucket, a: Assignment) in
             WidgetRow(
                 id: a.id,
                 title: a.title,
@@ -56,11 +62,15 @@ public struct WidgetSnapshot: Equatable, Sendable {
                 dueText: DueLogic.relativeDueText(for: a.dueDate, now: now, calendar: calendar)
             )
         }
+        let shown = ordered.prefix(max(0, limit)).map(row)
+        let doneShown = finished.prefix(max(0, limit - shown.count)).map { row(.done, $0) }
         let overdue = open.first { $0.bucket == .overdue }?.items.count ?? 0
         let today = open.first { $0.bucket == .today }?.items.count ?? 0
         return WidgetSnapshot(
             date: now,
             rows: Array(shown),
+            doneRows: Array(doneShown),
+            doneCount: finished.count,
             hiddenCount: ordered.count - shown.count,
             todayCount: overdue + today,
             overdueCount: overdue,

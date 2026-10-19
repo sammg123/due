@@ -170,6 +170,8 @@ desktop (or into Notification Center).
   with their urgency bar, course, and due time. Click a circle to mark one done, click +
   to add, click the note icon to open Notes, click anywhere else to open the menu bar
   popover.
+- Any room open work leaves goes to recently finished work, newest first, struck through
+  like the popover's Done list. Click its check to reopen it.
 
 The + opens a small add box near the top of the screen. It understands everything the
 popover's add field does; press Enter to add, Escape or click away to close. The widget

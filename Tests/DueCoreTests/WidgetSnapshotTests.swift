@@ -179,6 +179,68 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot(data([])).date, now)
     }
 
+    // MARK: - Done rows (fill the space open work leaves)
+
+    private func done(_ title: String, completed: Date, course: String? = nil) -> Assignment {
+        Assignment(
+            title: title,
+            course: course,
+            dueDate: date(2026, 8, 20),
+            isDone: true,
+            completedAt: completed,
+            createdAt: Date(timeIntervalSinceReferenceDate: 0)
+        )
+    }
+
+    func test_doneRows_fillTheSlotsOpenWorkLeaves_mostRecentlyCompletedFirst() {
+        // Arrange
+        let open = item("Open", due: date(2026, 8, 27))
+        let older = done("Older", completed: date(2026, 8, 24, 9, 0))
+        let newest = done("Newest", completed: date(2026, 8, 26, 9, 0))
+        let middle = done("Middle", completed: date(2026, 8, 25, 9, 0))
+
+        // Act
+        let snap = snapshot(data([older, open, newest, middle]), limit: 3)
+
+        // Assert
+        XCTAssertEqual(snap.rows.map(\.title), ["Open"])
+        XCTAssertEqual(snap.doneRows.map(\.title), ["Newest", "Middle"])
+        XCTAssertEqual(snap.doneRows.map(\.bucket), [.done, .done])
+        XCTAssertEqual(snap.doneCount, 3)
+    }
+
+    func test_doneRows_none_whenOpenWorkFillsTheLimit() {
+        let open = (0..<3).map { item("A\($0)", due: date(2026, 8, 27), sortOrder: $0) }
+        let finished = done("Finished", completed: date(2026, 8, 26, 9, 0))
+
+        let snap = snapshot(data(open + [finished]), limit: 3)
+
+        XCTAssertEqual(snap.rows.count, 3)
+        XCTAssertEqual(snap.doneRows, [])
+        XCTAssertEqual(snap.doneCount, 1)
+    }
+
+    func test_doneRows_carryCourseColorAndDueText() {
+        let finished = done("Essay", completed: date(2026, 8, 26, 9, 0), course: "WRIT150")
+
+        let row = snapshot(data([finished], colors: ["WRIT150": .pink])).doneRows[0]
+
+        XCTAssertEqual(row.id, finished.id)
+        XCTAssertEqual(row.course, "WRIT150")
+        XCTAssertEqual(row.courseColor, .pink)
+        XCTAssertEqual(row.dueText, DueLogic.relativeDueText(for: finished.dueDate, now: now, calendar: cal))
+    }
+
+    func test_doneRows_doNotCountTowardHiddenOpenWork() {
+        let finished = (0..<5).map { done("D\($0)", completed: date(2026, 8, 26, $0, 0)) }
+
+        let snap = snapshot(data(finished), limit: 3)
+
+        XCTAssertTrue(snap.isEmpty)
+        XCTAssertEqual(snap.doneRows.count, 3)
+        XCTAssertEqual(snap.hiddenCount, 0)
+    }
+
     // MARK: - Count caption (small widget, under the big number)
 
     func test_countCaption_saysOverdue_whenEverythingCountedIsLate() {

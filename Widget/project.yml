@@ -1,0 +1,64 @@
+# The desktop widget is a WidgetKit app extension, which SwiftPM cannot produce (it needs the
+# App Intents metadata step and an .appex bundle). build.sh generates this project with
+# XcodeGen, builds the .appex with xcodebuild, and embeds it in the SwiftPM-built Due.app.
+name: DueWidget
+options:
+  deploymentTarget:
+    macOS: "14.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  # Compiled from the same sources as the SwiftPM DueCore target, so the widget and the app
+  # bucket, label, and persist assignments identically.
+  DueCore:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: ../Sources/DueCore
+    settings:
+      base:
+        PRODUCT_MODULE_NAME: DueCore
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+  DueWidget:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Sources
+      - path: ../Sources/Due/Shared
+    dependencies:
+      - target: DueCore
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+      - sdk: AppIntents.framework
+    info:
+      path: Generated/Info.plist
+      properties:
+        CFBundleDisplayName: Due
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSMinimumSystemVersion: "14.0"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: Generated/DueWidget.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        # Widgets must be sandboxed; this lets the widget read and update the same
+        # assignments.json the (unsandboxed) app uses.
+        com.apple.security.temporary-exception.files.home-relative-path.read-write:
+          - /Library/Application Support/Due/
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.due.tracker.widget
+        PRODUCT_NAME: DueWidget
+        APPLICATION_EXTENSION_API_ONLY: YES
+        ENABLE_HARDENED_RUNTIME: NO
+        # Release builds should not carry the debugger entitlement Xcode adds by default.
+        CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO

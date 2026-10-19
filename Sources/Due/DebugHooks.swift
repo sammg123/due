@@ -7,7 +7,7 @@ enum DebugHooks {
 
     static func installIfRequested() {
         guard ProcessInfo.processInfo.environment["DUE_DEBUG"] == "1" else { return }
-        install(SIGUSR1) { clickStatusItem() }
+        install(SIGUSR1) { StatusItem.click() }
         install(SIGUSR2) { sendEscape() }
     }
 
@@ -17,19 +17,6 @@ enum DebugHooks {
         source.setEventHandler(handler: action)
         source.resume()
         sources.append(source)
-    }
-
-    private static func clickStatusItem() {
-        let button = NSApp.windows
-            .filter { $0.className.contains("StatusBar") }
-            .flatMap { $0.contentView.map(allSubviews) ?? [] }
-            .compactMap { $0 as? NSStatusBarButton }
-            .first
-        guard let button else {
-            NSLog("DebugHooks: status bar button not found")
-            return
-        }
-        button.performClick(nil)
     }
 
     private static func sendEscape() {
@@ -43,9 +30,5 @@ enum DebugHooks {
             return
         }
         window.sendEvent(down)
-    }
-
-    private static func allSubviews(_ view: NSView) -> [NSView] {
-        [view] + view.subviews.flatMap(allSubviews)
     }
 }

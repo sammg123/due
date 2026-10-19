@@ -106,9 +106,13 @@ public final class AppState {
     }
 
     // MARK: - Mutations
+    //
+    // Each one first adopts any edit the desktop widget wrote to disk, so the save that follows
+    // builds on it instead of writing stale memory over it.
 
     @discardableResult
     public func add(title: String, course: String?, dueDate: Date, estimateMinutes: Int? = nil, notes: String? = nil) -> Assignment? {
+        reloadFromDisk()
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty else { return nil }
         let cleanCourse = course?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -144,6 +148,7 @@ public final class AppState {
     }
 
     public func update(_ assignment: Assignment) {
+        reloadFromDisk()
         guard let idx = data.assignments.firstIndex(where: { $0.id == assignment.id }) else { return }
         var next = data
         var items = data.assignments
@@ -156,17 +161,20 @@ public final class AppState {
     }
 
     public func toggleDone(_ id: UUID) {
+        reloadFromDisk()
         guard let item = data.assignments.first(where: { $0.id == id }) else { return }
         update(item.togglingDone(at: Date()))
     }
 
     public func delete(_ id: UUID) {
+        reloadFromDisk()
         var next = data
         next.assignments = data.assignments.filter { $0.id != id }
         commit(next)
     }
 
     public func clearCompleted() {
+        reloadFromDisk()
         var next = data
         next.assignments = data.assignments.filter { !$0.isDone }
         commit(next)
@@ -174,6 +182,8 @@ public final class AppState {
 
     /// Drag reorder inside one bucket. Offsets are relative to the bucket's displayed items.
     public func move(in bucket: DueBucket, fromOffsets: IndexSet, toOffset: Int) {
+        // Offsets index the list as it was drawn; if the widget changed it since, they are stale.
+        guard !reloadFromDisk() else { return }
         guard bucket != .done else { return }
         guard let group = grouped.first(where: { $0.bucket == bucket }) else { return }
         applyOrder(group.items.moving(fromOffsets: fromOffsets, toOffset: toOffset))
@@ -181,12 +191,14 @@ public final class AppState {
 
     /// Resets a bucket to due-date order.
     public func sortByDueDate(in bucket: DueBucket) {
+        reloadFromDisk()
         guard let group = grouped.first(where: { $0.bucket == bucket }) else { return }
         applyOrder(group.items.sorted { $0.dueDate < $1.dueDate })
     }
 
     /// Groups a bucket by course (alphabetical, no-course last), due date within a course.
     public func sortByCourse(in bucket: DueBucket) {
+        reloadFromDisk()
         guard let group = grouped.first(where: { $0.bucket == bucket }) else { return }
         applyOrder(group.items.sorted {
             let a = $0.course ?? "\u{FFFF}", b = $1.course ?? "\u{FFFF}"
@@ -211,6 +223,7 @@ public final class AppState {
     /// Returns the cleaned name, or nil if it was blank.
     @discardableResult
     public func registerCourse(_ name: String) -> String? {
+        reloadFromDisk()
         let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return nil }
         guard data.courseColors[clean] == nil else { return clean }
@@ -223,6 +236,7 @@ public final class AppState {
     /// Removes a course that no assignment uses. Returns false (and changes nothing) if it is in use.
     @discardableResult
     public func removeCourse(_ course: String) -> Bool {
+        reloadFromDisk()
         guard !isCourseInUse(course) else { return false }
         var next = data
         next.courseColors.removeValue(forKey: course)
@@ -231,15 +245,32 @@ public final class AppState {
     }
 
     public func setColor(_ color: PaletteColor, forCourse course: String) {
+        reloadFromDisk()
         var next = data
         next.courseColors[course] = color
         commit(next)
     }
 
     public func updateSettings(_ settings: DueSettings) {
+        reloadFromDisk()
         var next = data
         next.settings = settings
         commit(next)
+    }
+
+    /// Adopts the file on disk when another writer (the desktop widget's checkboxes) changed it.
+    /// Does not save. Returns true when `data` changed.
+    @discardableResult
+    public func reloadFromDisk() -> Bool {
+        guard let store else { return false }
+        do {
+            guard let fresh = try store.loadIfChanged(comparedTo: data) else { return false }
+            data = fresh
+            return true
+        } catch {
+            lastError = "Could not read \(store.url.lastPathComponent): \(error.localizedDescription)"
+            return false
+        }
     }
 
     public func refreshNow(_ date: Date = Date()) {

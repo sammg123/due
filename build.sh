@@ -34,15 +34,40 @@ swift build -c release
 
 BIN=".build/release/Due"
 
+# The desktop widget is an app extension, which only Xcode's build system can produce. It needs
+# full Xcode plus XcodeGen (brew install xcodegen); without them Due builds and runs without it.
+WIDGET=".build/widget/Build/Products/Release/DueWidget.appex"
+BUILD_WIDGET=1
+if ! command -v xcodegen > /dev/null 2>&1 || ! xcodebuild -version > /dev/null 2>&1; then
+    echo "==> Skipping the desktop widget (needs Xcode and XcodeGen: brew install xcodegen)"
+    BUILD_WIDGET=0
+fi
+if [ "$BUILD_WIDGET" -eq 1 ]; then
+    echo "==> Widget: xcodegen + xcodebuild"
+    xcodegen generate --spec Widget/project.yml --quiet
+    xcodebuild -project Widget/DueWidget.xcodeproj -scheme DueWidget -configuration Release \
+        -derivedDataPath .build/widget -quiet build
+fi
+
 echo "==> Assembling $APP_DIR"
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 cp "$BIN" "$APP_DIR/Contents/MacOS/Due"
 cp Support/Info.plist "$APP_DIR/Contents/Info.plist"
+if [ "$BUILD_WIDGET" -eq 1 ]; then
+    # Signed by xcodebuild with its sandbox entitlements; the app signature below seals it as is.
+    mkdir -p "$APP_DIR/Contents/PlugIns"
+    cp -R "$WIDGET" "$APP_DIR/Contents/PlugIns/"
+fi
 
 SIGN_ID="Due Signing"
 if security find-identity -p codesigning | grep -q "$SIGN_ID"; then
     echo "==> Signing ($SIGN_ID)"
+    if [ "$BUILD_WIDGET" -eq 1 ]; then
+        # Same identity inside and out, keeping the widget's sandbox entitlements.
+        codesign --force --sign "$SIGN_ID" --identifier com.due.tracker.widget \
+            --entitlements Widget/Generated/DueWidget.entitlements "$APP_DIR/Contents/PlugIns/DueWidget.appex"
+    fi
     codesign --force --sign "$SIGN_ID" --identifier com.due.tracker "$APP_DIR"
 else
     echo "==> Signing (ad-hoc; macOS re-asks for Microphone once after each rebuild)"
@@ -54,6 +79,9 @@ if pgrep -x Due > /dev/null 2>&1; then
     pkill -x Due
     sleep 0.3
 fi
+
+# Register right away so the widget shows up in Edit Widgets without waiting for a rescan.
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP_DIR"
 
 echo "==> Done: $APP_DIR"
 if [ "$LAUNCH" -eq 1 ]; then

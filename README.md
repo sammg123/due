@@ -14,6 +14,8 @@ Requirements: macOS 14 or newer and the Swift toolchain (Xcode, or the Command L
 Tools with Xcode 16+ / Swift 6). Smart parsing and the notes AI actions additionally
 need macOS 26 with Apple Intelligence turned on, and lecture transcription wants Apple
 silicon (the model runs on the Neural Engine); everything else works without them.
+The desktop widget needs full Xcode plus [XcodeGen](https://github.com/yonaskolb/XcodeGen)
+(`brew install xcodegen`); without them `./build.sh` skips the widget and builds the rest.
 
 ```
 git clone https://github.com/sammg123/due.git
@@ -137,6 +139,23 @@ run straight out of `.build/debug`.
 - Week strip: click a day to see only what is due that day, click the week title for the whole week, and use the arrows to page to next weeks (or up to 4 weeks back). "All" in the scope bar returns to the full list.
 - Course chips under the add field filter everything (list and week strip) to one course.
 - Right-click a group header for "Sort by due date" or "Sort by course". Drag rows to set your own order.
+
+## Desktop widget
+
+Right-click the desktop, choose Edit Widgets, search for Due, and drag a size onto the
+desktop (or into Notification Center).
+
+- Small: how many things are due today (or overdue) and the next three titles. Click it
+  to add something.
+- Medium and large: the same headline, then your open assignments in the popover's order
+  with their urgency bar, course, and due time. Click a circle to mark one done, click +
+  to add, click anywhere else to open the menu bar popover.
+
+The + opens a small add box near the top of the screen. It understands everything the
+popover's add field does; press Enter to add, Escape or click away to close. The widget
+updates as soon as anything changes, from either side, and checking things off works even
+when Due is not running. The widget is sandboxed and can only touch
+`~/Library/Application Support/Due/`.
 
 ## Notes
 

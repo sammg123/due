@@ -1,9 +1,12 @@
 import SwiftUI
+import WidgetKit
 import DueCore
 
 @main
 struct DueApp: App {
-    @State private var state = AppState.loadFromDisk()
+    // Owns `AppState` so the widget's due:// links and the scenes share one instance.
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    private var state: AppState { appDelegate.state }
     @State private var notesState = NotesState.loadFromDisk()
     // App-level so a recording survives the notes window closing.
     @State private var lectureEngine = LectureEngine()
@@ -82,6 +85,8 @@ struct MenuBarLabel: View {
             }
         }
         .onReceive(clock) { state.refreshNow($0) }
+        // Every add, edit, and check-off redraws the desktop widget right away.
+        .onChange(of: state.data) { WidgetCenter.shared.reloadAllTimelines() }
         .onAppear {
             if CommandLine.arguments.contains("--preview") {
                 openWindow(id: "preview")

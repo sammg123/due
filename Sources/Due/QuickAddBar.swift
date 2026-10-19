@@ -7,6 +7,8 @@ struct QuickAddBar: View {
     @Environment(AppState.self) private var state
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var isFocused: FocusState<Bool>.Binding
+    /// Called after each successful add (the widget's quick-add box closes itself here).
+    private let onAdded: (Assignment) -> Void
 
     @State private var text = ""
     @State private var pickerDate: Date
@@ -29,8 +31,9 @@ struct QuickAddBar: View {
 
     private static let estimateOptions = [15, 30, 45, 60, 90, 120, 180, 240]
 
-    init(isFocused: FocusState<Bool>.Binding) {
+    init(isFocused: FocusState<Bool>.Binding, onAdded: @escaping (Assignment) -> Void = { _ in }) {
         self.isFocused = isFocused
+        self.onAdded = onAdded
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
         _pickerDate = State(initialValue: DueLogic.endOfDay(tomorrow))
     }
@@ -265,7 +268,7 @@ struct QuickAddBar: View {
             dueDate: effectiveDue(parsed),
             estimateMinutes: explicitEstimate ?? parsed.estimateMinutes
         )
-        guard added != nil else { return }
+        guard let added else { return }
         text = ""
         explicitEstimate = nil
         didTouchDate = false
@@ -274,5 +277,6 @@ struct QuickAddBar: View {
         smartResult = nil
         isSmartParsing = false
         isFocused.wrappedValue = true
+        onAdded(added)
     }
 }

@@ -134,4 +134,62 @@ final class JSONStoreTests: XCTestCase {
 
         XCTAssertEqual(loaded, .empty)
     }
+
+    // MARK: - Default location (shared with the sandboxed widget)
+
+    func test_defaultURL_honorsTheOverride() {
+        let url = JSONStore.defaultURL(environment: ["DUE_DATA_PATH": "/tmp/x/a.json"], home: URL(fileURLWithPath: "/Users/someone"))
+        XCTAssertEqual(url.path, "/tmp/x/a.json")
+    }
+
+    func test_defaultURL_withoutOverride_isUnderTheGivenHome() {
+        let url = JSONStore.defaultURL(environment: ["DUE_DATA_PATH": ""], home: URL(fileURLWithPath: "/Users/someone"))
+        XCTAssertEqual(url.path, "/Users/someone/Library/Application Support/Due/assignments.json")
+    }
+
+    func test_userHomeDirectory_isTheRealHome_notASandboxContainer() {
+        let home = JSONStore.userHomeDirectory().path
+        XCTAssertFalse(home.contains("/Library/Containers/"))
+        XCTAssertEqual(home, FileManager.default.homeDirectoryForCurrentUser.path) // tests run unsandboxed
+    }
+
+    // MARK: - loadIfChanged
+
+    private func sampleData(title: String) -> AppData {
+        let cal = makeCalendar()
+        let item = Assignment(title: title, course: "CS225", dueDate: date(2026, 8, 28, 17, 0, calendar: cal), createdAt: date(2026, 8, 1, 9, 0, calendar: cal))
+        return AppData(assignments: [item], courseColors: ["CS225": .blue], settings: DueSettings())
+    }
+
+    func test_loadIfChanged_ourOwnWrite_isNotAChange() throws {
+        let store = JSONStore(url: tempRoot.appendingPathComponent("assignments.json"))
+        let current = sampleData(title: "Essay")
+        try store.save(current)
+
+        XCTAssertNil(try store.loadIfChanged(comparedTo: current))
+    }
+
+    func test_loadIfChanged_anotherWritersChange_isReturned() throws {
+        let url = tempRoot.appendingPathComponent("assignments.json")
+        let store = JSONStore(url: url)
+        let current = sampleData(title: "Essay")
+        try store.save(current)
+        let external = sampleData(title: "Essay v2")
+        try JSONStore(url: url).save(external)
+
+        XCTAssertEqual(try store.loadIfChanged(comparedTo: current), external)
+    }
+
+    func test_loadIfChanged_missingFile_isNotAChange() throws {
+        let store = JSONStore(url: tempRoot.appendingPathComponent("missing.json"))
+        XCTAssertNil(try store.loadIfChanged(comparedTo: sampleData(title: "Essay")))
+    }
+
+    func test_loadIfChanged_corruptFile_throws() throws {
+        let url = tempRoot.appendingPathComponent("assignments.json")
+        try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+        try Data("{not json".utf8).write(to: url)
+
+        XCTAssertThrowsError(try JSONStore(url: url).loadIfChanged(comparedTo: .empty))
+    }
 }

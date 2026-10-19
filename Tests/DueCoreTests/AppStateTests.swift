@@ -299,6 +299,113 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(reloaded.data.settings, state.data.settings)
         XCTAssertEqual(reloaded.data.courseColors, state.data.courseColors)
     }
+
+    // MARK: - reloadFromDisk (changes made by the desktop widget)
+
+    func test_reloadFromDisk_picksUpAnotherWritersChange_withoutResaving() throws {
+        // Arrange
+        let url = tempRoot.appendingPathComponent("assignments.json")
+        let store = JSONStore(url: url)
+        let state = makeState(store: store)
+        let item = state.add(title: "Essay", course: nil, dueDate: date(2026, 8, 28))!
+        var external = try store.load()
+        external.assignments = external.assignments.map { $0.id == item.id ? $0.togglingDone(at: now) : $0 }
+        try JSONStore(url: url).save(external)
+        let bytesBefore = try Data(contentsOf: url)
+
+        // Act
+        let changed = state.reloadFromDisk()
+
+        // Assert
+        XCTAssertTrue(changed)
+        XCTAssertEqual(state.data, external)
+        XCTAssertTrue(state.assignments[0].isDone)
+        XCTAssertEqual(try Data(contentsOf: url), bytesBefore)
+    }
+
+    func test_reloadFromDisk_afterOurOwnSave_changesNothing() throws {
+        let store = JSONStore(url: tempRoot.appendingPathComponent("assignments.json"))
+        let state = makeState(store: store)
+        state.add(title: "Essay", course: "CS225", dueDate: date(2026, 8, 28))
+        let before = state.data
+
+        XCTAssertFalse(state.reloadFromDisk())
+        XCTAssertEqual(state.data, before)
+    }
+
+    /// The widget's checkbox writes the file directly; an app edit made before the watcher has
+    /// adopted that write must build on it, not save stale memory over it.
+    func test_mutations_keepAWidgetEditTheAppHasNotAdoptedYet() throws {
+        // Arrange
+        let url = tempRoot.appendingPathComponent("assignments.json")
+        let store = JSONStore(url: url)
+        let state = makeState(store: store)
+        let a = state.add(title: "A", course: nil, dueDate: date(2026, 8, 28))!
+        var external = try store.load()
+        external.assignments = external.assignments.map { $0.id == a.id ? $0.togglingDone(at: now) : $0 }
+        try JSONStore(url: url).save(external)
+
+        // Act: no reloadFromDisk() first
+        state.add(title: "B", course: nil, dueDate: date(2026, 8, 29))
+
+        // Assert
+        let onDisk = try store.load()
+        XCTAssertEqual(onDisk.assignments.map(\.title), ["A", "B"])
+        XCTAssertTrue(onDisk.assignments[0].isDone)
+        XCTAssertTrue(state.assignments[0].isDone)
+    }
+
+    func test_toggleDone_afterAWidgetToggle_keepsBothToggles() throws {
+        let url = tempRoot.appendingPathComponent("assignments.json")
+        let store = JSONStore(url: url)
+        let state = makeState(store: store)
+        let a = state.add(title: "A", course: nil, dueDate: date(2026, 8, 28))!
+        let b = state.add(title: "B", course: nil, dueDate: date(2026, 8, 28))!
+        var external = try store.load()
+        external.assignments = external.assignments.map { $0.id == a.id ? $0.togglingDone(at: now) : $0 }
+        try JSONStore(url: url).save(external)
+
+        state.toggleDone(b.id)
+
+        XCTAssertEqual(try store.load().assignments.filter(\.isDone).count, 2)
+    }
+
+    func test_move_whenTheFileChangedUnderneath_isDropped_becauseItsOffsetsAreStale() throws {
+        let url = tempRoot.appendingPathComponent("assignments.json")
+        let store = JSONStore(url: url)
+        let state = makeState(store: store)
+        let due = date(2026, 8, 26, 18, 0)
+        let a = state.add(title: "A", course: nil, dueDate: due)!
+        state.add(title: "B", course: nil, dueDate: due)
+        state.add(title: "C", course: nil, dueDate: due)
+        var external = try store.load()
+        external.assignments = external.assignments.filter { $0.id != a.id }
+        try JSONStore(url: url).save(external)
+
+        state.move(in: .today, fromOffsets: IndexSet(integer: 0), toOffset: 2)
+
+        let titles = state.grouped.first { $0.bucket == .today }?.items.map(\.title)
+        XCTAssertEqual(titles, ["B", "C"])
+        XCTAssertEqual(try store.load(), state.data)
+    }
+
+    func test_reloadFromDisk_withoutAStore_isANoOp() {
+        let state = makeState()
+        XCTAssertFalse(state.reloadFromDisk())
+    }
+
+    func test_reloadFromDisk_corruptFile_keepsDataAndReportsTheError() throws {
+        let url = tempRoot.appendingPathComponent("assignments.json")
+        let store = JSONStore(url: url)
+        let state = makeState(store: store)
+        state.add(title: "Essay", course: nil, dueDate: date(2026, 8, 28))
+        let before = state.data
+        try Data("{not json".utf8).write(to: url)
+
+        XCTAssertFalse(state.reloadFromDisk())
+        XCTAssertEqual(state.data, before)
+        XCTAssertNotNil(state.lastError)
+    }
 }
 
 // MARK: - registered courses

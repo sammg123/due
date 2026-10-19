@@ -1,6 +1,5 @@
 import SwiftUI
 import WidgetKit
-import AppIntents
 import DueCore
 
 struct DueWidgetEntryView: View {
@@ -33,9 +32,7 @@ struct SmallDueView: View {
                     .contentTransition(.numericText())
                 Spacer()
                 HStack(spacing: 6) {
-                    // Before macOS 15 only a Link could open Notes, and a Link inside the
-                    // small widget's add surface just adds; leave the icon out there.
-                    if #available(macOS 15, *) { NotesButton() }
+                    NotesButton()
                     AddGlyph()
                 }
             }
@@ -179,23 +176,36 @@ private struct UrgencyBar: View {
 
 /// The + mark. A `Link` in medium and large; the small widget's whole surface is the link.
 private struct AddGlyph: View {
+    @Environment(\.widgetRenderingMode) private var renderingMode
+
     var body: some View {
+        if renderingMode == .fullColor {
+            glyph.foregroundStyle(.white)
+                .background(Circle().fill(Color.accentColor))
+        } else {
+            // When the desktop dims widgets to gray, a white + on a filled circle turns into one
+            // flat disc; draw it like the Notes icon so the + stays visible.
+            glyph.foregroundStyle(.primary)
+                .background(Circle().fill(.quaternary))
+        }
+    }
+
+    private var glyph: some View {
         Image(systemName: "plus")
             .font(.system(size: 12, weight: .bold))
-            .foregroundStyle(.white)
             .frame(width: 24, height: 24)
-            .background(Circle().fill(Color.accentColor))
-            .widgetAccentable()
             .accessibilityLabel("Add assignment")
     }
 }
 
-/// Opens the Notes window. An intent button rather than a `Link` because the small widget
-/// is one big add link, and only a button gets its own tap target inside it.
+/// Opens the Notes window. A `Link` like the +, except in the small widget: that whole widget
+/// is the add link, and only an intent button gets its own tap target inside it.
 private struct NotesButton: View {
+    @Environment(\.widgetFamily) private var family
+
     var body: some View {
-        if #available(macOS 15, *) {
-            Button(intent: OpenURLIntent(DueLink.notes.url)) { NotesGlyph() }
+        if family == .systemSmall {
+            Button(intent: OpenNotesIntent()) { NotesGlyph() }
                 .buttonStyle(.plain)
         } else {
             Link(destination: DueLink.notes.url) { NotesGlyph() }

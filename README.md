@@ -165,7 +165,7 @@ Right-click the desktop, choose Edit Widgets, search for Due, and drag a size on
 desktop (or into Notification Center).
 
 - Small: how many things are due today (or overdue) and the next three titles. Click the
-  note icon to open Notes (macOS 15 and later); click anywhere else to add something.
+  note icon to open Notes; click anywhere else to add something.
 - Medium and large: the same headline, then your open assignments in the popover's order
   with their urgency bar, course, and due time. Click a circle to mark one done, click +
   to add, click the note icon to open Notes, click anywhere else to open the menu bar

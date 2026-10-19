@@ -10,7 +10,9 @@ struct DueWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: Self.kind, provider: DueProvider()) { entry in
             DueWidgetEntryView(entry: entry)
-                .containerBackground(.background, for: .widget)
+                // The window background (dark gray / white), the same family as Calendar and
+                // Weather. `.background` resolves to pure black on the desktop in dark mode.
+                .containerBackground(for: .widget) { Color(nsColor: .windowBackgroundColor) }
         }
         .configurationDisplayName("Due")
         .description("What's due next, with a quick way to add more.")

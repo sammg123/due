@@ -84,6 +84,13 @@ fi
 
 # Register right away so the widget shows up in Edit Widgets without waiting for a rescan.
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP_DIR"
+if [ -d "$APP_DIR/Contents/PlugIns/DueWidget.appex" ]; then
+    # The widget service caches the extension's version and refuses to redraw a placed widget
+    # from a newer build ("Bundle version did not match") for up to an hour. Restarting it
+    # (launchd brings it straight back) makes every placed widget pick up this build now.
+    pluginkit -a "$APP_DIR/Contents/PlugIns/DueWidget.appex"
+    killall chronod 2>/dev/null || true
+fi
 
 echo "==> Done: $APP_DIR"
 if [ "$LAUNCH" -eq 1 ]; then

@@ -45,8 +45,10 @@ fi
 if [ "$BUILD_WIDGET" -eq 1 ]; then
     echo "==> Widget: xcodegen + xcodebuild"
     xcodegen generate --spec Widget/project.yml --quiet
+    # A fresh build number every time: chronod caches widget descriptors per extension version,
+    # and a stale cache offers kinds the new build no longer has (they render blank).
     xcodebuild -project Widget/DueWidget.xcodeproj -scheme DueWidget -configuration Release \
-        -derivedDataPath .build/widget -quiet build
+        -derivedDataPath .build/widget -quiet build CURRENT_PROJECT_VERSION="$(date +%Y%m%d%H%M%S)"
 fi
 
 echo "==> Assembling $APP_DIR"

@@ -138,7 +138,7 @@ public final class AppState {
     /// Parses "pset 4 fri 5pm #CS225 ~2h". Explicit UI fields win over parsed ones when provided.
     @discardableResult
     public func addQuick(_ text: String, fallbackDue: Date, course: String? = nil, estimateMinutes: Int? = nil) -> Assignment? {
-        let parsed = QuickAddParser.parse(text, now: now, calendar: calendar)
+        let parsed = QuickAddParser.parse(text, now: now, calendar: calendar, knownCourses: courses)
         return add(
             title: parsed.title,
             course: course ?? parsed.course,

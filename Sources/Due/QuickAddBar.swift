@@ -226,9 +226,9 @@ struct QuickAddBar: View {
     /// Model fields win where present for text still matching the parse; the regex parse fills
     /// every gap, exactly as `QuickAddParse.merging` documents.
     private var parsedNow: QuickAddParse {
-        let base = QuickAddParser.parse(text, now: state.now)
+        let base = QuickAddParser.parse(text, now: state.now, knownCourses: state.courses)
         if let smartResult, smartResult.text == text {
-            return base.merging(smartResult.result, now: state.now)
+            return base.merging(smartResult.result, now: state.now, knownCourses: state.courses)
         }
         return base
     }

@@ -114,6 +114,15 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(item?.dueDate, fallback)
     }
 
+    func test_addQuick_tagsAKnownCourseMentioned_andTakesItOutOfTheTitle() {
+        let data = AppData(assignments: [], courseColors: ["ECON351": .blue, "BUAD312": .purple], settings: DueSettings())
+        let state = makeState(data: data)
+        let item = state.addQuick("do homework in econ friday", fallbackDue: date(2026, 9, 1))
+        XCTAssertEqual(item?.title, "do homework")
+        XCTAssertEqual(item?.course, "ECON351")
+        XCTAssertEqual(item?.dueDate, date(2026, 8, 28, 23, 59))
+    }
+
     func test_addQuick_explicitCourseAndEstimate_overrideParsedValues() {
         let state = makeState()
         let item = state.addQuick("task #CS225 ~30m", fallbackDue: date(2026, 9, 1), course: "OVERRIDE", estimateMinutes: 99)

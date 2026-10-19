@@ -184,12 +184,42 @@ final class SmartParseTests: XCTestCase {
 
     // MARK: - merging: course + estimate
 
-    func test_merging_smartCourseAndEstimateOverrideRegexValues() {
-        let base = QuickAddParse(title: "Regex Title", dueDate: date(2026, 8, 27, 17, 0), course: "REGEXCOURSE", estimateMinutes: 30, hasExplicitTime: true)
-        let smart = SmartParseResult(course: "SMARTCOURSE", estimateMinutes: 77)
-        let merged = base.merging(smart, now: now, calendar: cal)
-        XCTAssertEqual(merged.course, "SMARTCOURSE")
+    func test_merging_regexCourseBeatsTheModel_estimateStillFromTheModel() {
+        let base = QuickAddParse(title: "Regex Title", dueDate: date(2026, 8, 27, 17, 0), course: "WRIT150", estimateMinutes: 30, hasExplicitTime: true)
+        let smart = SmartParseResult(course: "CSCI113", estimateMinutes: 77)
+        let merged = base.merging(smart, now: now, calendar: cal, knownCourses: known)
+        XCTAssertEqual(merged.course, "WRIT150")
         XCTAssertEqual(merged.estimateMinutes, 77)
+    }
+
+    func test_merging_modelCourseFillsIn_whenRegexFoundNone_andItIsKnown() {
+        let base = QuickAddParse(title: "essay")
+        let merged = base.merging(SmartParseResult(course: "CSCI113"), now: now, calendar: cal, knownCourses: known)
+        XCTAssertEqual(merged.course, "CSCI113")
+    }
+
+    func test_merging_modelCourseThatIsNotKnown_isDropped() {
+        let base = QuickAddParse(title: "essay")
+        let merged = base.merging(SmartParseResult(course: "PSYCH 101"), now: now, calendar: cal, knownCourses: known)
+        XCTAssertNil(merged.course)
+    }
+
+    func test_merging_modelCannotPickACourse_whenTheTextWasAmbiguous() {
+        let base = QuickAddParse(title: "BUAD midterm", hasAmbiguousCourse: true)
+        let merged = base.merging(SmartParseResult(course: "BUAD312"), now: now, calendar: cal, knownCourses: ["BUAD112", "BUAD312"])
+        XCTAssertNil(merged.course)
+    }
+
+    func test_merging_modelTitle_hasTheCourseMentionStripped() {
+        let base = QuickAddParse(title: "homework", course: "WRIT150")
+        let merged = base.merging(SmartParseResult(title: "homework for writ 150"), now: now, calendar: cal, knownCourses: known)
+        XCTAssertEqual(merged.title, "homework")
+    }
+
+    func test_merging_modelTitleThatIsOnlyTheCourse_isKept() {
+        let base = QuickAddParse(title: "writ", course: "WRIT150")
+        let merged = base.merging(SmartParseResult(title: "writ"), now: now, calendar: cal, knownCourses: known)
+        XCTAssertEqual(merged.title, "writ")
     }
 
     func test_merging_regexCourseAndEstimateSurvive_whenSmartNil() {

@@ -77,6 +77,25 @@ No time given = 11:59 PM on the due date.
 | `#CS225` | course tag |
 | `~1h30m`, `~45m`, `~2h`, `~1.5 hours` | estimated time |
 
+**Classes**
+
+Once a course exists (it has been used once, or added in the course menu), you can name it
+without the `#`. The class is tagged and the words are taken out of the title, along with a
+leading "in", "for", or "of": `do homework in econ friday` becomes "do homework", ECON351,
+due Friday. These rules are exact code, not a guess by the model.
+
+| You type | Matches ECON351 because |
+|---|---|
+| `econ351`, `ECON 351` | full name |
+| `351` | course number (three or more digits) |
+| `econ`, `economics`, `eco` | subject word, a common ending, or the first three letters |
+| `ecom`, `ecno` | one neighboring key off, or two letters swapped |
+
+A word that fits two of your courses tags nothing: with BUAD112 and BUAD312, `buad` alone
+stays in the title, while `buad 112` or `312` picks the class. Numbers after count words
+(`page 351`, `hw 312`) or before amounts (`150 words`) are left alone, and so is `at 312`,
+which is a time. If the text is only the class (`econ fri`), the word stays as the title.
+
 ## Color legend
 
 Course colors are cosmetic and assigned automatically; urgency colors are fixed and
@@ -200,7 +219,7 @@ recordings in `Notes/Audio/` and drawings in `Notes/Drawings/`.
 
 ## Smart parsing
 
-With Apple Intelligence enabled (macOS 26), the add field also runs an on-device language model about half a second after you stop typing. It cleans up the title, maps loose class mentions ("for writing") onto your real course names, and reads durations. A sparkles icon in the preview line means the model's read is in use. Dates the built-in parser recognizes always win, because the model is not reliable at weekday arithmetic ("next fri"). Turn it off in Settings under Parsing. Nothing leaves the Mac.
+With Apple Intelligence enabled (macOS 26), the add field also runs an on-device language model about half a second after you stop typing. It cleans up the title, maps loose class mentions ("for writing") onto your real course names, and reads durations. A class the built-in rules found always wins, and the model can only pick one of your existing courses, never one the text left ambiguous. A sparkles icon in the preview line means the model's read is in use. Dates the built-in parser recognizes always win, because the model is not reliable at weekday arithmetic ("next fri"). Turn it off in Settings under Parsing. Nothing leaves the Mac.
 
 ## Development
 

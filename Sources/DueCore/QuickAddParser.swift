@@ -8,13 +8,17 @@ public struct QuickAddParse: Equatable, Sendable {
     public var estimateMinutes: Int?
     /// True when the user typed a clock time (so the UI should not overwrite it with 11:59 PM).
     public var hasExplicitTime: Bool
+    /// True when the text named a class that fits more than one known course ("buad" with BUAD112
+    /// and BUAD312) and nothing settled it. The on-device model must not pick one either.
+    public var hasAmbiguousCourse: Bool
 
-    public init(title: String, dueDate: Date? = nil, course: String? = nil, estimateMinutes: Int? = nil, hasExplicitTime: Bool = false) {
+    public init(title: String, dueDate: Date? = nil, course: String? = nil, estimateMinutes: Int? = nil, hasExplicitTime: Bool = false, hasAmbiguousCourse: Bool = false) {
         self.title = title
         self.dueDate = dueDate
         self.course = course
         self.estimateMinutes = estimateMinutes
         self.hasExplicitTime = hasExplicitTime
+        self.hasAmbiguousCourse = hasAmbiguousCourse
     }
 }
 
@@ -22,19 +26,23 @@ public struct QuickAddParse: Equatable, Sendable {
 ///   dates: today, tonight, tomorrow/tmr/tmrw, mon..sunday, "next fri", "in 3 days", "in 2 weeks",
 ///          eod, eow, "dec 8", "12/8"
 ///   times: 5pm, 5:30pm, 17:00, noon, midnight, "at 5", "@ 5"
-///   course: #CS225
+///   course: #CS225, plus any mention of a known course ("econ", "351", "BUAD 312"; see `CourseMatcher`)
 ///   estimate: ~45m, ~1h, ~1.5h, ~1h30m, ~2 hours (a leading - works too: -2h)
 /// Everything matched is stripped; the remainder is the title.
 public enum QuickAddParser {
-    public static func parse(_ input: String, now: Date = Date(), calendar: Calendar = .current) -> QuickAddParse {
+    public static func parse(_ input: String, now: Date = Date(), calendar: Calendar = .current, knownCourses: [String] = []) -> QuickAddParse {
         // Trailing punctuation ("5pm.", "fri,") should not stop a token from matching.
         let normalized = input.replacingOccurrences(of: #"([.,;!])(?=\s|$)"#, with: " ", options: .regularExpression)
         var text = " \(normalized) "
         var result = QuickAddParse(title: "")
 
-        if let (course, stripped) = extractCourse(from: text) {
-            result.course = course
+        if let (tag, stripped) = extractCourse(from: text) {
             text = stripped
+            switch CourseMatcher.resolve(tag, known: knownCourses) {
+            case .course(let name): result.course = name
+            case .ambiguous: result.hasAmbiguousCourse = true
+            case .none: result.course = tag
+            }
         }
         if let (minutes, stripped) = extractEstimate(from: text) {
             result.estimateMinutes = minutes
@@ -65,8 +73,27 @@ public enum QuickAddParser {
             dayOffset: dayOffset, isNext: isNext, explicitDate: explicitDate,
             time: dayComponents, now: now, calendar: calendar
         )
+        // Classes last, so dates and times keep the words they own ("at 312" is 3:12 PM).
+        text = applyKnownCourses(knownCourses, to: text, result: &result)
         result.title = cleanTitle(text)
         return result
+    }
+
+    /// Tags the class the text names and takes its mentions out of the title. A #tag already set
+    /// the class, so only its plain mentions are removed ("econ reading #ECON351" -> "reading").
+    private static func applyKnownCourses(_ known: [String], to text: String, result: inout QuickAddParse) -> String {
+        guard !known.isEmpty else { return text }
+        if let course = result.course {
+            return " \(CourseMatcher.strip(course, from: text, known: known)) "
+        }
+        let found = CourseMatcher.extract(from: text, known: known)
+        if let course = found.course {
+            result.course = course
+            result.hasAmbiguousCourse = false
+        } else if found.isAmbiguous {
+            result.hasAmbiguousCourse = true
+        }
+        return " \(found.text) "
     }
 
     // MARK: - Pieces

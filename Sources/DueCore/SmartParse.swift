@@ -63,13 +63,19 @@ public extension QuickAddParse {
     /// Precedence, measured against the on-device model (2026-08-26): the regex parser is exact on
     /// every date phrase it recognizes, while the model gets weekday arithmetic wrong ("next fri",
     /// "end of week"). So the regex DAY always wins when it found one; the model only supplies a day
-    /// the regex could not read. Times: an explicit regex time wins, else the model's. Title, course
-    /// and estimate: the model wins (it is better at stripping words and mapping course names).
+    /// the regex could not read. Times: an explicit regex time wins, else the model's. Title and
+    /// estimate: the model wins (it is better at stripping filler words). Course: the rule-based
+    /// match always wins (2026-10-19: the model kept guessing wrong); the model may only fill a
+    /// course the text did not settle, only with one of `knownCourses`, and never when the text was
+    /// ambiguous. Class mentions are then removed from the model's title too.
     /// A day with no time is due 11:59 PM; a time with no day is today or tomorrow.
-    func merging(_ smart: SmartParseResult, now: Date = Date(), calendar: Calendar = .current) -> QuickAddParse {
+    func merging(_ smart: SmartParseResult, now: Date = Date(), calendar: Calendar = .current, knownCourses: [String] = []) -> QuickAddParse {
         var merged = self
         if let t = smart.title { merged.title = t }
-        if let c = smart.course { merged.course = c }
+        if course == nil, !hasAmbiguousCourse, let c = smart.course, knownCourses.contains(c) { merged.course = c }
+        if let c = merged.course, !knownCourses.isEmpty {
+            merged.title = CourseMatcher.strip(c, from: merged.title, known: knownCourses)
+        }
         if let e = smart.estimateMinutes { merged.estimateMinutes = e }
 
         let regexTime: DateComponents? = hasExplicitTime && dueDate != nil

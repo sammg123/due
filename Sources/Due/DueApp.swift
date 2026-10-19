@@ -20,7 +20,7 @@ struct DueApp: App {
                 .environment(notesState)
                 .environment(lectureEngine)
         } label: {
-            MenuBarLabel()
+            MenuBarLabel(notesOpener: appDelegate.notesOpener)
                 .environment(state)
         }
         .menuBarExtraStyle(.window)
@@ -71,6 +71,7 @@ struct DueApp: App {
 
 /// Always mounted, so it also owns the once-a-minute clock refresh that rolls buckets over at midnight.
 struct MenuBarLabel: View {
+    let notesOpener: DeferredAction
     @Environment(AppState.self) private var state
     @Environment(\.openWindow) private var openWindow
     @State private var clock = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
@@ -88,6 +89,11 @@ struct MenuBarLabel: View {
         // Every add, edit, and check-off redraws the desktop widget right away.
         .onChange(of: state.data) { WidgetCenter.shared.reloadAllTimelines() }
         .onAppear {
+            // The widget's Notes button arrives as `due://notes` at the app delegate.
+            notesOpener.install {
+                openWindow(id: "notes")
+                NSApp.activate(ignoringOtherApps: true)
+            }
             if CommandLine.arguments.contains("--preview") {
                 openWindow(id: "preview")
                 NSApp.activate(ignoringOtherApps: true)

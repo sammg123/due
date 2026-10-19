@@ -6,6 +6,8 @@ public enum DueLink: String, CaseIterable, Sendable {
     case add
     /// Open the menu bar popover.
     case open
+    /// Open the Notes window.
+    case notes
 
     public static let scheme = "due"
 
@@ -17,7 +19,7 @@ public enum DueLink: String, CaseIterable, Sendable {
         return url
     }
 
-    /// Accepts `due://add` and `due://open` in any case, with or without a trailing slash.
+    /// Accepts `due://add`, `due://open` and `due://notes` in any case, with or without a trailing slash.
     public init?(url: URL) {
         guard url.scheme?.lowercased() == Self.scheme,
               let host = url.host?.lowercased(),

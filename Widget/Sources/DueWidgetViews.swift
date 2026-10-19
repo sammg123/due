@@ -1,5 +1,6 @@
 import SwiftUI
 import WidgetKit
+import AppIntents
 import DueCore
 
 struct DueWidgetEntryView: View {
@@ -16,7 +17,8 @@ struct DueWidgetEntryView: View {
     }
 }
 
-// MARK: - Small: the menu bar number plus the next few titles. The whole widget opens quick add.
+// MARK: - Small: the menu bar number plus the next few titles. The Notes button opens Notes;
+// everywhere else opens quick add.
 
 struct SmallDueView: View {
     let entry: DueEntry
@@ -30,7 +32,12 @@ struct SmallDueView: View {
                     .foregroundStyle(countColor)
                     .contentTransition(.numericText())
                 Spacer()
-                AddGlyph()
+                HStack(spacing: 6) {
+                    // Before macOS 15 only a Link could open Notes, and a Link inside the
+                    // small widget's add surface just adds; leave the icon out there.
+                    if #available(macOS 15, *) { NotesButton() }
+                    AddGlyph()
+                }
             }
             Text(snapshot.countCaption)
                 .font(.system(size: 12, weight: .medium))
@@ -102,6 +109,7 @@ struct ListDueView: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
             }
+            NotesButton()
             Link(destination: DueLink.add.url) { AddGlyph() }
         }
     }
@@ -179,6 +187,31 @@ private struct AddGlyph: View {
             .background(Circle().fill(Color.accentColor))
             .widgetAccentable()
             .accessibilityLabel("Add assignment")
+    }
+}
+
+/// Opens the Notes window. An intent button rather than a `Link` because the small widget
+/// is one big add link, and only a button gets its own tap target inside it.
+private struct NotesButton: View {
+    var body: some View {
+        if #available(macOS 15, *) {
+            Button(intent: OpenURLIntent(DueLink.notes.url)) { NotesGlyph() }
+                .buttonStyle(.plain)
+        } else {
+            Link(destination: DueLink.notes.url) { NotesGlyph() }
+        }
+    }
+}
+
+/// Quieter than the + so adding stays the widget's main action.
+private struct NotesGlyph: View {
+    var body: some View {
+        Image(systemName: "note.text")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.primary)
+            .frame(width: 24, height: 24)
+            .background(Circle().fill(.quaternary))
+            .accessibilityLabel("Open Notes")
     }
 }
 

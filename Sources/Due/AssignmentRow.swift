@@ -8,7 +8,7 @@ struct AssignmentRow: View {
     @Environment(AppState.self) private var state
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
-    @State private var showEdit = false
+    @Environment(PanelOverlay.self) private var overlay
 
     private var bucket: DueBucket { state.bucket(for: assignment) }
 
@@ -69,7 +69,7 @@ struct AssignmentRow: View {
             .help(DueLogic.fullDueText(for: assignment.dueDate))
 
             if isHovering {
-                Button { showEdit = true } label: {
+                Button { overlay.edit(assignment) } label: {
                     Image(systemName: "pencil")
                 }
                 .buttonStyle(.plain)
@@ -96,11 +96,7 @@ struct AssignmentRow: View {
             in: RoundedRectangle(cornerRadius: Theme.rowCornerRadius)
         )
         .onHover { isHovering = $0 }
-        .onTapGesture(count: 2) { showEdit = true }
-        .popover(isPresented: $showEdit) {
-            EditAssignmentView(assignment: assignment)
-                .environment(state)
-        }
+        .onTapGesture(count: 2) { overlay.edit(assignment) }
         .animation(reduceMotion ? nil : .easeOut(duration: Theme.animationFast), value: assignment.isDone)
     }
 

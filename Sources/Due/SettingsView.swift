@@ -4,7 +4,7 @@ import DueCore
 
 struct SettingsView: View {
     @Environment(AppState.self) private var state
-    @Environment(\.dismiss) private var dismiss
+    var onClose: () -> Void = {}
 
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
     @State private var launchAtLoginError: String?
@@ -260,7 +260,7 @@ struct SettingsView: View {
     private var doneRow: some View {
         HStack {
             Spacer()
-            Button("Done") { dismiss() }
+            Button("Done") { onClose() }
                 .keyboardShortcut(.defaultAction)
         }
     }

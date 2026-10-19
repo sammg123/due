@@ -11,7 +11,7 @@ struct PopoverView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openWindow) private var openWindow
     @FocusState private var quickAddFocused: Bool
-    @State private var showSettings = false
+    @State private var overlay = PanelOverlay()
     @AppStorage("doneExpanded") private var doneExpanded = false
 
     @State private var weekOffset = 0
@@ -95,6 +95,9 @@ struct PopoverView: View {
             weekOffset = 0
         }
         .overlay(escapeButton)
+        .overlay { PanelOverlayHost() }
+        .animation(reduceMotion ? nil : .easeOut(duration: Theme.animationFast), value: overlay.content)
+        .environment(overlay)
     }
 
     // MARK: - Week and scope navigation
@@ -179,7 +182,7 @@ struct PopoverView: View {
             .help("Notes (⇧⌘N)")
             .accessibilityLabel("Notes")
             Button {
-                showSettings = true
+                overlay.showSettings()
             } label: {
                 Image(systemName: "gearshape")
             }
@@ -187,9 +190,6 @@ struct PopoverView: View {
             .foregroundStyle(.secondary)
             .help("Settings")
             .accessibilityLabel("Settings")
-            .popover(isPresented: $showSettings) {
-                SettingsView().environment(state)
-            }
         }
         .padding(.horizontal, 12)
         .padding(.top, 10)
@@ -344,7 +344,7 @@ struct PopoverView: View {
     // MARK: - Escape to dismiss
 
     private var escapeButton: some View {
-        Button("", action: { dismiss() })
+        Button("", action: { if overlay.content != nil { overlay.close() } else { dismiss() } })
             .keyboardShortcut(.escape, modifiers: [])
             .opacity(0)
             .frame(width: 0, height: 0)

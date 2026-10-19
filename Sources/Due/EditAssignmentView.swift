@@ -5,7 +5,7 @@ import DueCore
 struct EditAssignmentView: View {
     let assignment: Assignment
     @Environment(AppState.self) private var state
-    @Environment(\.dismiss) private var dismiss
+    let onClose: () -> Void
 
     @State private var title: String
     @State private var course: String
@@ -17,8 +17,9 @@ struct EditAssignmentView: View {
 
     private static let estimateOptions = [15, 30, 45, 60, 90, 120, 180, 240]
 
-    init(assignment: Assignment) {
+    init(assignment: Assignment, onClose: @escaping () -> Void) {
         self.assignment = assignment
+        self.onClose = onClose
         _title = State(initialValue: assignment.title)
         _course = State(initialValue: assignment.course ?? "")
         _dueDate = State(initialValue: assignment.dueDate)
@@ -37,7 +38,7 @@ struct EditAssignmentView: View {
             courseField
 
             DatePicker("Due", selection: $dueDate, displayedComponents: [.date, .hourAndMinute])
-                .datePickerStyle(.compact)
+                .datePickerStyle(.graphical)
 
             estimateField
 
@@ -47,7 +48,7 @@ struct EditAssignmentView: View {
 
             HStack {
                 Spacer()
-                Button("Cancel") { dismiss() }
+                Button("Cancel") { onClose() }
                     .keyboardShortcut(.cancelAction)
                 Button("Save", action: save)
                     .keyboardShortcut(.defaultAction)
@@ -131,6 +132,6 @@ struct EditAssignmentView: View {
             sortOrder: assignment.sortOrder
         )
         state.update(edited)
-        dismiss()
+        onClose()
     }
 }

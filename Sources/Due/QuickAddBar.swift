@@ -11,6 +11,7 @@ struct QuickAddBar: View {
     @State private var text = ""
     @State private var pickerDate: Date
     @State private var didTouchDate = false
+    @State private var showDatePicker = false
     @State private var explicitCourse: String?
     @State private var explicitEstimate: Int?
     @State private var showNewCourseField = false
@@ -48,13 +49,22 @@ struct QuickAddBar: View {
 
             HStack(spacing: 8) {
                 courseMenu
+                Button { showDatePicker.toggle() } label: {
+                    Text(pickerDate.formatted(.dateTime.month(.abbreviated).day().hour().minute()))
+                        .font(.callout)
+                        .monospacedDigit()
+                }
+                .buttonStyle(.plain)
+                .help("Due date")
+                .accessibilityLabel("Due date")
+                estimateMenu
+            }
+
+            if showDatePicker {
                 DatePicker("Due date", selection: $pickerDate, displayedComponents: [.date, .hourAndMinute])
-                    .datePickerStyle(.compact)
+                    .datePickerStyle(.graphical)
                     .labelsHidden()
                     .onChange(of: pickerDate) { didTouchDate = true }
-                    .help("Due date")
-                    .accessibilityLabel("Due date")
-                estimateMenu
             }
 
             if showNewCourseField {
